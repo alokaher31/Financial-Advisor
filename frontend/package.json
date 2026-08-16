@@ -1,0 +1,24 @@
+{
+  "name": "finance-advisor-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Frontend for the AI-Powered Finance Planning System. Deterministic numbers and GenAI explanations both come from the backend; this app only collects input and renders results.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host --port 4173",
+    "lint": "eslint src --ext .js,.jsx"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "vite": "^5.4.11"
+  }
+}
