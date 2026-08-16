@@ -1,0 +1,9 @@
+customer_name,age,monthly_income,monthly_expenses,savings,total_assets,total_liabilities,goal_type,target_amount,current_goal_savings,time_horizon_years,likely_risk_category
+Amit Sharma,25,65000,40000,300000,350000,50000,House_Purchase,4000000,500000,7,Aggressive
+Priya Verma,45,180000,100000,1500000,8000000,2000000,Retirement,50000000,12000000,15,Moderate
+Rahul Nair,30,55000,42000,150000,200000,30000,Emergency_Fund,300000,150000,1,Conservative
+Sneha Iyer,35,120000,75000,900000,3500000,1200000,Child_Education,3000000,900000,10,Moderate
+Karan Mehta,32,300000,130000,2000000,6000000,800000,Wealth_Creation,30000000,4000000,20,Aggressive
+Sunita Rao,58,150000,90000,3000000,15000000,500000,Retirement,20000000,16000000,4,Conservative
+Vikram Desai,40,110000,95000,400000,4500000,3000000,Debt_Reduction,3000000,800000,6,Moderate
+Anjali Kapoor,50,160000,100000,2500000,12000000,1000000,Retirement_Healthcare,25000000,10000000,8,Conservative
