@@ -109,6 +109,85 @@ RISK_QUESTIONNAIRE: tuple[RiskQuestion, ...] = (
             AnswerOption("advanced", "Advanced knowledge", 4),
         ),
     ),
+    RiskQuestion(
+        id="emergency_fund_coverage",
+        text=(
+            "How many months of essential expenses could your emergency savings "
+            "cover without selling investments?"
+        ),
+        options=(
+            AnswerOption("under_1_month", "Less than 1 month", 0),
+            AnswerOption("1_to_3_months", "1 to under 3 months", 1),
+            AnswerOption("3_to_6_months", "3 to under 6 months", 2),
+            AnswerOption("6_to_12_months", "6 to 12 months", 3),
+            AnswerOption("over_12_months", "More than 12 months", 4),
+        ),
+    ),
+    RiskQuestion(
+        id="debt_payment_pressure",
+        text="How do your current debt payments affect your monthly finances?",
+        options=(
+            AnswerOption(
+                "severe",
+                "Payments make essential expenses difficult to meet",
+                0,
+            ),
+            AnswerOption(
+                "high",
+                "Payments significantly limit saving and flexibility",
+                1,
+            ),
+            AnswerOption(
+                "manageable",
+                "Payments are manageable with limited flexibility",
+                2,
+            ),
+            AnswerOption(
+                "low",
+                "Payments are comfortably manageable",
+                3,
+            ),
+            AnswerOption(
+                "none_or_minimal",
+                "I have no debt payments or only minimal payments",
+                4,
+            ),
+        ),
+    ),
+    RiskQuestion(
+        id="loss_capacity",
+        text=(
+            "If this investment lost 20% and took several years to recover, "
+            "how would that affect your essential expenses and financial goals?"
+        ),
+        options=(
+            AnswerOption(
+                "major_disruption",
+                "It would prevent me from meeting essential commitments",
+                0,
+            ),
+            AnswerOption(
+                "significant_adjustments",
+                "It would require significant financial adjustments",
+                1,
+            ),
+            AnswerOption(
+                "some_adjustments",
+                "It would require some non-essential adjustments",
+                2,
+            ),
+            AnswerOption(
+                "minor_impact",
+                "It would have only a minor effect on my plans",
+                3,
+            ),
+            AnswerOption(
+                "no_material_impact",
+                "It would not materially affect essential expenses or goals",
+                4,
+            ),
+        ),
+    ),
 )
 
 
@@ -124,7 +203,7 @@ _MAX_RAW_SCORE = len(RISK_QUESTIONNAIRE) * 4
 
 
 def calculate_risk_score(answers: Mapping[str, str]) -> int:
-    """Scale seven questionnaire answers to an integer score from 0 to 100.
+    """Scale all questionnaire answers to an integer score from 0 to 100.
 
     Args:
         answers: Mapping of every question ID to one valid answer ID.

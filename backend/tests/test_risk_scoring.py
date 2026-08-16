@@ -20,7 +20,7 @@ def _answers_at_weight(weight: int) -> dict[str, str]:
     }
 
 
-def test_questionnaire_covers_exactly_seven_required_topics() -> None:
+def test_questionnaire_covers_exactly_ten_required_topics() -> None:
     assert tuple(question.id for question in RISK_QUESTIONNAIRE) == (
         "investment_experience",
         "market_drop_reaction",
@@ -29,6 +29,9 @@ def test_questionnaire_covers_exactly_seven_required_topics() -> None:
         "primary_goal",
         "volatility_comfort",
         "investment_knowledge",
+        "emergency_fund_coverage",
+        "debt_payment_pressure",
+        "loss_capacity",
     )
 
 
@@ -36,6 +39,27 @@ def test_each_question_has_exactly_one_option_for_every_weight() -> None:
     for question in RISK_QUESTIONNAIRE:
         assert sorted(option.weight for option in question.options) == [0, 1, 2, 3, 4]
         assert len({option.id for option in question.options}) == 5
+
+
+def test_every_question_and_answer_has_customer_facing_text() -> None:
+    for question in RISK_QUESTIONNAIRE:
+        assert question.text.strip()
+        for option in question.options:
+            assert option.label.strip()
+
+
+def test_new_questions_measure_distinct_risk_capacity_dimensions() -> None:
+    new_question_ids = {
+        question.id
+        for question in RISK_QUESTIONNAIRE
+        if question.id
+        in {"emergency_fund_coverage", "debt_payment_pressure", "loss_capacity"}
+    }
+    assert new_question_ids == {
+        "emergency_fund_coverage",
+        "debt_payment_pressure",
+        "loss_capacity",
+    }
 
 
 def test_questionnaire_records_are_immutable() -> None:
@@ -49,6 +73,14 @@ def test_all_lowest_risk_answers_score_zero() -> None:
 
 def test_all_highest_risk_answers_score_one_hundred() -> None:
     assert calculate_risk_score(_answers_at_weight(4)) == 100
+
+
+@pytest.mark.parametrize(("weight", "expected_score"), [(1, 25), (2, 50), (3, 75)])
+def test_uniform_middle_weights_scale_linearly(
+    weight: int,
+    expected_score: int,
+) -> None:
+    assert calculate_risk_score(_answers_at_weight(weight)) == expected_score
 
 
 def test_mixed_answers_are_scaled_to_integer_score() -> None:
@@ -86,6 +118,24 @@ def test_missing_question_is_rejected() -> None:
     answers.pop("primary_goal")
     with pytest.raises(ValueError, match="missing.*primary_goal"):
         calculate_risk_score(answers)
+
+
+def test_legacy_seven_answer_payload_reports_all_new_required_questions() -> None:
+    answers = _answers_at_weight(2)
+    for question_id in (
+        "emergency_fund_coverage",
+        "debt_payment_pressure",
+        "loss_capacity",
+    ):
+        answers.pop(question_id)
+
+    with pytest.raises(ValueError) as error:
+        calculate_risk_score(answers)
+
+    message = str(error.value)
+    assert "emergency_fund_coverage" in message
+    assert "debt_payment_pressure" in message
+    assert "loss_capacity" in message
 
 
 def test_unexpected_question_is_rejected() -> None:
