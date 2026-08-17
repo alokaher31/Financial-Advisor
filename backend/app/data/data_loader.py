@@ -1,10 +1,11 @@
 """
-Data loading utilities for the Finance Planner prototype.
+Data loading utilities for the Financial Advisor backend.
 
-This module provides a single, reusable interface for loading
-synthetic historical financial data and demo customer profiles.
-
-No financial calculations or LLM operations should be performed here.
+Provides:
+- load_historical_data(): hardcoded asset class averages (default, no file needed)
+- load_historical_data_from_file(): CSV-based historical data loader
+- load_raw_historical_data(): full synthetic historical dataset from CSV
+- load_demo_customers(): synthetic demo customer profiles from CSV
 """
 
 from pathlib import Path
@@ -18,13 +19,8 @@ import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent
 
-HISTORICAL_SUMMARY_FILE = (
-    DATA_DIR / "historical_data_summary.csv"
-)
-
-CUSTOMERS_FILE = (
-    DATA_DIR / "synthetic_customers.csv"
-)
+HISTORICAL_SUMMARY_FILE = DATA_DIR / "historical_data_summary.csv"
+CUSTOMERS_FILE = DATA_DIR / "synthetic_customers.csv"
 
 
 # ---------------------------------------------------------------------------
@@ -54,28 +50,60 @@ CUSTOMER_COLUMNS = [
 
 
 # ---------------------------------------------------------------------------
-# Historical data loader
+# Historical data loaders
 # ---------------------------------------------------------------------------
+
+def load_historical_data() -> pd.DataFrame:
+    """
+    Load historical asset class return data.
+
+    Returns hardcoded averages by default so the application works
+    without any data files present.
+
+    Returns:
+        DataFrame with columns: asset_category, avg_annual_return, volatility
+    """
+    data = {
+        "asset_category": ["Equity", "Debt", "Gold", "Real_Estate", "Cash"],
+        "avg_annual_return": [12.0, 7.5, 8.0, 9.0, 4.0],   # Annual returns in %
+        "volatility": [18.0, 5.0, 12.0, 10.0, 1.0],          # Std deviation in %
+    }
+    return pd.DataFrame(data)
+
+
+def load_historical_data_from_file(file_path: str) -> pd.DataFrame:
+    """
+    Load historical data from a CSV file.
+
+    Args:
+        file_path: Path to CSV file with columns:
+                   asset_category, avg_annual_return, volatility
+
+    Returns:
+        DataFrame with historical data
+    """
+    df = pd.read_csv(file_path)
+
+    required_columns = {"asset_category", "avg_annual_return", "volatility"}
+    if not required_columns.issubset(df.columns):
+        raise ValueError(f"CSV must contain columns: {required_columns}")
+
+    return df
+
 
 def load_raw_historical_data() -> pd.DataFrame:
     """
-    Load the complete synthetic historical dataset.
+    Load the complete synthetic historical dataset from CSV.
 
     Returns:
-        pd.DataFrame:
-            Columns:
-            - year
-            - asset_category
-            - annual_return_pct
-            - volatility_pct
+        pd.DataFrame with columns: year, asset_category,
+        annual_return_pct, volatility_pct
     """
-
     historical_file = DATA_DIR / "synthetic_historical_data.csv"
 
     if not historical_file.exists():
         raise FileNotFoundError(
-            f"Raw historical data file not found: "
-            f"{historical_file}"
+            f"Raw historical data file not found: {historical_file}"
         )
 
     df = pd.read_csv(historical_file)
@@ -94,61 +122,8 @@ def load_raw_historical_data() -> pd.DataFrame:
             f"Found: {list(df.columns)}"
         )
 
-    numeric_columns = [
-        "year",
-        "annual_return_pct",
-        "volatility_pct",
-    ]
-
-    for column in numeric_columns:
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="raise",
-        )
-
-    return df
-
-
-def load_historical_data() -> pd.DataFrame:
-    """
-    Load the historical asset-performance summary.
-
-    Returns:
-        pd.DataFrame:
-            DataFrame containing:
-
-            asset_category
-            avg_annual_return
-            volatility
-    """
-
-    if not HISTORICAL_SUMMARY_FILE.exists():
-        raise FileNotFoundError(
-            f"Historical summary file not found: "
-            f"{HISTORICAL_SUMMARY_FILE}"
-        )
-
-    df = pd.read_csv(HISTORICAL_SUMMARY_FILE)
-
-    # Verify expected schema
-    if list(df.columns) != HISTORICAL_COLUMNS:
-        raise ValueError(
-            "Historical summary has an unexpected schema. "
-            f"Expected: {HISTORICAL_COLUMNS}, "
-            f"Found: {list(df.columns)}"
-        )
-
-    # Ensure numeric columns are actually numeric
-    numeric_columns = [
-        "avg_annual_return",
-        "volatility",
-    ]
-
-    for column in numeric_columns:
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="raise",
-        )
+    for column in ["year", "annual_return_pct", "volatility_pct"]:
+        df[column] = pd.to_numeric(df[column], errors="raise")
 
     return df
 
@@ -157,15 +132,13 @@ def load_historical_data() -> pd.DataFrame:
 # Demo customer loader
 # ---------------------------------------------------------------------------
 
-def load_demo_customers() -> list[dict]:
+def load_demo_customers() -> list:
     """
-    Load synthetic demo customer profiles.
+    Load synthetic demo customer profiles from CSV.
 
     Returns:
-        list[dict]:
-            A list containing one dictionary per customer.
+        list[dict]: One dictionary per customer row.
     """
-
     if not CUSTOMERS_FILE.exists():
         raise FileNotFoundError(
             f"Customer dataset not found: {CUSTOMERS_FILE}"
@@ -173,7 +146,6 @@ def load_demo_customers() -> list[dict]:
 
     df = pd.read_csv(CUSTOMERS_FILE)
 
-    # Verify expected schema
     if list(df.columns) != CUSTOMER_COLUMNS:
         raise ValueError(
             "Customer dataset has an unexpected schema. "
@@ -181,7 +153,6 @@ def load_demo_customers() -> list[dict]:
             f"Found: {list(df.columns)}"
         )
 
-    # Convert numeric columns explicitly
     numeric_columns = [
         "age",
         "monthly_income",
@@ -195,10 +166,7 @@ def load_demo_customers() -> list[dict]:
     ]
 
     for column in numeric_columns:
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="raise",
-        )
+        df[column] = pd.to_numeric(df[column], errors="raise")
 
     return df.to_dict(orient="records")
 
@@ -208,25 +176,11 @@ def load_demo_customers() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("Loading raw historical data...")
-
-    raw_historical_data = load_raw_historical_data()
-
-    print(
-        f"Loaded {len(raw_historical_data)} historical records."
-    )
-    print(raw_historical_data.head())
+    print("Loading historical data (hardcoded defaults)...")
+    hist = load_historical_data()
+    print(hist)
     print()
 
-    print("Loading historical summary...")
-
-    historical_data = load_historical_data()
-
-    print(historical_data)
-    print()
-
-    print("Loading demo customers...")
-
+    print("Loading demo customers from CSV...")
     customers = load_demo_customers()
-
     print(f"Loaded {len(customers)} customers.")

@@ -1,0 +1,62 @@
+/* Design tokens for the Finance Advisor app. Professional fintech palette:
+   indigo/teal accents on a clean light background, with clear semantic
+   colors for success/warning/error states used across financial data. */
+
+:root {
+  /* Brand */
+  --color-primary: #155e75; /* teal-900-ish */
+  --color-primary-strong: #0e4a5e;
+  --color-primary-soft: #e0f2f6;
+  --color-accent: #4f46e5; /* indigo-600 */
+  --color-accent-soft: #eef2ff;
+
+  /* Neutrals */
+  --color-bg: #f6f8fa;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f1f5f7;
+  --color-border: #e2e8ec;
+  --color-border-strong: #cbd5db;
+  --color-text: #1a2530;
+  --color-text-muted: #5b6b76;
+  --color-text-faint: #8896a1;
+
+  /* Semantic */
+  --color-success: #1a7f4e;
+  --color-success-soft: #e6f6ee;
+  --color-warning: #a9600a;
+  --color-warning-soft: #fdf1e0;
+  --color-error: #b3261e;
+  --color-error-soft: #fbeae9;
+  --color-info: #2563a8;
+  --color-info-soft: #e8f1fb;
+
+  /* Risk levels */
+  --color-risk-conservative: #1a7f4e;
+  --color-risk-moderate: #a9600a;
+  --color-risk-aggressive: #b3261e;
+
+  /* Typography */
+  --font-sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Radii + shadows */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(20, 30, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(20, 30, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(20, 30, 40, 0.12);
+
+  --max-width: 1120px;
+}

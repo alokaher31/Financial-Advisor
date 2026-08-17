@@ -7,3 +7,4 @@ node_modules/
 venv/
 .DS_Store
 backend/.env
+MEMBER_2_IMPLEMENTATION_PLAN.md
