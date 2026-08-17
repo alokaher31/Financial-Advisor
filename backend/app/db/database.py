@@ -1,49 +1,105 @@
 """
 Database connection and session management.
 Provides SQLAlchemy engine, session factory, and dependency injection for FastAPI.
+Supports both SQLite (default) and PostgreSQL.
 """
 
-from typing import Generator
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
-from app.config import get_settings
-from app.db.db_models import Base
+import os
 import logging
+from pathlib import Path
+from typing import Generator
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker, Session, declarative_base
+from sqlalchemy.pool import StaticPool
+
+# ---------------------------------------------------------
+# Load backend/.env if present
+# ---------------------------------------------------------
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(BACKEND_ROOT / ".env")
 
 logger = logging.getLogger(__name__)
 
-# Get settings
-settings = get_settings()
+# ---------------------------------------------------------
+# Resolve DATABASE_URL
+# ---------------------------------------------------------
 
-# Create engine based on database URL
-if settings.DATABASE_URL.startswith("sqlite"):
-    # SQLite-specific configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./financial_advisor.db")
+DB_ECHO = os.getenv("DB_ECHO", "False").lower() == "true"
+
+# ---------------------------------------------------------
+# Create engine (SQLite vs PostgreSQL)
+# ---------------------------------------------------------
+
+if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(
-        settings.DATABASE_URL,
+        DATABASE_URL,
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
-        echo=settings.DB_ECHO,
+        echo=DB_ECHO,
     )
-    
-    # Enable foreign key constraints for SQLite
+
     @event.listens_for(engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+
 else:
-    # PostgreSQL or other database configuration
+    # PostgreSQL or other database
     engine = create_engine(
-        settings.DATABASE_URL,
-        echo=settings.DB_ECHO,
-        pool_pre_ping=True,  # Verify connections before using them
+        DATABASE_URL,
+        echo=DB_ECHO,
+        pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
     )
 
-# Create session factory
+# ---------------------------------------------------------
+# Session factory & ORM base
+# ---------------------------------------------------------
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
+
+# ---------------------------------------------------------
+# FastAPI dependency
+# ---------------------------------------------------------
+
+def get_db() -> Generator[Session, None, None]:
+    """
+    Dependency function for FastAPI to get database session.
+
+    Usage in FastAPI route:
+    ```
+    @app.get("/items")
+    def read_items(db: Session = Depends(get_db)):
+        items = db.query(Item).all()
+        return items
+    ```
+
+    Yields:
+        Session: SQLAlchemy database session
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_db_session() -> Session:
+    """
+    Get a database session for use outside of FastAPI dependency injection.
+
+    Returns:
+        Session: SQLAlchemy database session
+    """
+    return SessionLocal()
 
 
 def create_tables():
@@ -72,62 +128,19 @@ def drop_tables():
         raise
 
 
-def get_db() -> Generator[Session, None, None]:
-    """
-    Dependency function for FastAPI to get database session.
-    
-    Usage in FastAPI route:
-    ```
-    @app.get("/items")
-    def read_items(db: Session = Depends(get_db)):
-        items = db.query(Item).all()
-        return items
-    ```
-    
-    Yields:
-        Session: SQLAlchemy database session
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 def init_db():
     """
-    Initialize database.
-    Creates tables and optionally seeds initial data.
+    Initialize database: create tables.
     """
     logger.info("Initializing database...")
     create_tables()
     logger.info("Database initialized successfully")
 
 
-def get_db_session() -> Session:
-    """
-    Get a database session for use outside of FastAPI dependency injection.
-    
-    Usage:
-    ```
-    db = get_db_session()
-    try:
-        # Perform database operations
-        result = db.query(Model).all()
-    finally:
-        db.close()
-    ```
-    
-    Returns:
-        Session: SQLAlchemy database session
-    """
-    return SessionLocal()
-
-
 def check_db_connection() -> bool:
     """
     Check if database connection is working.
-    
+
     Returns:
         bool: True if connection is successful, False otherwise
     """
@@ -142,22 +155,21 @@ def check_db_connection() -> bool:
         return False
 
 
-# Context manager for database sessions
 class DatabaseSession:
     """
     Context manager for database sessions.
-    
+
     Usage:
     ```
     with DatabaseSession() as db:
         result = db.query(Model).all()
     ```
     """
-    
+
     def __enter__(self) -> Session:
         self.db = SessionLocal()
         return self.db
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is not None:
             self.db.rollback()

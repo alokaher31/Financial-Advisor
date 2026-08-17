@@ -270,18 +270,18 @@ SAMPLE_RISK_ASSESSMENTS = {
 }
 
 
-def seed_customers(db: Session) -> dict[str, int]:
+def seed_customers(db: Session) -> dict:
     """
     Seed customer profiles.
-    
+
     Args:
         db: Database session
-        
+
     Returns:
         Dictionary mapping customer names to their IDs
     """
     customer_ids = {}
-    
+
     logger.info("Seeding customer profiles...")
     for customer_data in SAMPLE_CUSTOMERS:
         try:
@@ -291,27 +291,27 @@ def seed_customers(db: Session) -> dict[str, int]:
             logger.info(f"Created customer: {db_customer.name} (ID: {db_customer.id})")
         except Exception as e:
             logger.error(f"Error creating customer {customer_data['name']}: {e}")
-    
+
     return customer_ids
 
 
-def seed_goals(db: Session, customer_ids: dict[str, int]) -> None:
+def seed_goals(db: Session, customer_ids: dict) -> None:
     """
     Seed financial goals for customers.
-    
+
     Args:
         db: Database session
         customer_ids: Dictionary mapping customer names to their IDs
     """
     logger.info("Seeding financial goals...")
-    
+
     for customer_name, goals_list in SAMPLE_GOALS.items():
         if customer_name not in customer_ids:
             logger.warning(f"Customer {customer_name} not found, skipping goals")
             continue
-        
+
         customer_id = customer_ids[customer_name]
-        
+
         for goal_data in goals_list:
             try:
                 goal = GoalCreate(customer_id=customer_id, **goal_data)
@@ -324,23 +324,23 @@ def seed_goals(db: Session, customer_ids: dict[str, int]) -> None:
                 logger.error(f"Error creating goal {goal_data['goal_name']}: {e}")
 
 
-def seed_risk_assessments(db: Session, customer_ids: dict[str, int]) -> None:
+def seed_risk_assessments(db: Session, customer_ids: dict) -> None:
     """
     Seed risk assessments for customers.
-    
+
     Args:
         db: Database session
         customer_ids: Dictionary mapping customer names to their IDs
     """
     logger.info("Seeding risk assessments...")
-    
+
     for customer_name, answers in SAMPLE_RISK_ASSESSMENTS.items():
         if customer_name not in customer_ids:
             logger.warning(f"Customer {customer_name} not found, skipping risk assessment")
             continue
-        
+
         customer_id = customer_ids[customer_name]
-        
+
         try:
             assessment = RiskAssessmentCreate(
                 customer_id=customer_id,
@@ -361,32 +361,32 @@ def seed_database() -> None:
     This function initializes the database and populates it with test data.
     """
     logger.info("Starting database seeding...")
-    
+
     # Initialize database (create tables)
     init_db()
-    
+
     # Get database session
     db = get_db_session()
-    
+
     try:
         # Check if database already has data
         existing_customers = get_customer_profiles(db, limit=1)
         if existing_customers:
             logger.info("Database already contains data. Skipping seed.")
             return
-        
+
         # Seed customers
         customer_ids = seed_customers(db)
-        
+
         # Seed goals
         seed_goals(db, customer_ids)
-        
+
         # Seed risk assessments
         seed_risk_assessments(db, customer_ids)
-        
+
         logger.info("Database seeding completed successfully!")
         logger.info(f"Created {len(customer_ids)} customers with goals and risk assessments")
-        
+
     except Exception as e:
         logger.error(f"Error during database seeding: {e}")
         db.rollback()
@@ -401,7 +401,7 @@ def clear_and_seed() -> None:
     WARNING: This will delete all existing data!
     """
     from app.db.database import drop_tables
-    
+
     logger.warning("Clearing all database data...")
     drop_tables()
     logger.info("Database cleared. Reseeding...")
@@ -409,11 +409,8 @@ def clear_and_seed() -> None:
 
 
 if __name__ == "__main__":
-    # Configure logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    
-    # Seed the database
     seed_database()
