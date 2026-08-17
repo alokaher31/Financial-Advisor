@@ -38,6 +38,7 @@ export default function WhatIfPanel() {
       profileId: state.profile.result?.profileId,
       goalId: state.goal.result?.goalId,
       planName: selectedPlan.planName,
+      planId: selectedPlan.planId,
       scenario: { type: 'extra_monthly_investment', amount },
     })
     if (response) setResult(response)

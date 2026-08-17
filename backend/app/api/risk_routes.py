@@ -15,7 +15,7 @@ from app.models import (
     RiskQuestionnaire,
     RiskQuestion,
 )
-from app.core.risk_scoring import RISK_QUESTIONS
+from app.core.risk_scoring import RISK_QUESTIONNAIRE as RISK_QUESTIONS
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
@@ -32,10 +32,10 @@ def get_risk_questionnaire():
     for q in RISK_QUESTIONS:
         questions.append(
             RiskQuestion(
-                question_id=q.question_id,
-                question_text=q.question_text,
+                question_id=q.id,
+                question_text=q.text,
                 options=[
-                    {"label": opt.label, "value": opt.value, "score": opt.score}
+                    {"label": opt.label, "value": opt.id, "score": opt.weight}
                     for opt in q.options
                 ]
             )

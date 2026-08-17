@@ -32,7 +32,7 @@ export default function PlanDetail() {
   const gapIsSurplus = typeof plan.gapVsTarget === 'number' && plan.gapVsTarget >= 0
 
   async function handleSelect() {
-    const result = await runSelect({ profileId: state.profile.result?.profileId, planName: plan.planName })
+    const result = await runSelect({ planId: plan.planId, profileId: state.profile.result?.profileId, planName: plan.planName })
     if (!result) return
     dispatch({ type: 'SET_SELECTED_PLAN', plan })
     dispatch({ type: 'COMPLETE_STEP', step: 'plans' })

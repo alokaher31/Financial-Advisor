@@ -70,6 +70,7 @@ export default function GoalInput() {
         profileId: state.profile.result?.profileId,
         goalId: goalResult.goalId,
         riskCategory: state.risk.result?.riskCategory,
+        riskAssessmentId: state.risk.result?.riskAssessmentId,
       })
       dispatch({ type: 'SET_PLANS', plans })
       dispatch({ type: 'COMPLETE_STEP', step: 'goal' })
