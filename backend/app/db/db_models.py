@@ -14,11 +14,32 @@ from sqlalchemy.sql import func
 from app.db.database import Base
 
 
+class UserDB(Base):
+    """User authentication model."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    customer_profiles = relationship("CustomerProfileDB", back_populates="user", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}', name='{self.name}')>"
+
+
 class CustomerProfileDB(Base):
     """Customer profile database model."""
     __tablename__ = "customer_profiles"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String(200), nullable=False, index=True)
     age = Column(Integer, nullable=False)
     occupation = Column(String(200), nullable=False)
@@ -30,6 +51,7 @@ class CustomerProfileDB(Base):
     # Calculated fields
     net_worth = Column(Float, nullable=False)
     monthly_surplus = Column(Float, nullable=False)
+    savings_rate = Column(Float, nullable=False, default=0.0)
     debt_to_income_ratio = Column(Float, nullable=False)
 
     # Timestamps
@@ -37,6 +59,7 @@ class CustomerProfileDB(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
+    user = relationship("UserDB", back_populates="customer_profiles")
     goals = relationship("GoalDB", back_populates="customer", cascade="all, delete-orphan")
     plans = relationship("PlanDB", back_populates="customer", cascade="all, delete-orphan")
     risk_assessments = relationship("RiskAssessmentDB", back_populates="customer", cascade="all, delete-orphan")
@@ -161,6 +184,7 @@ class ChatMessageDB(Base):
 
 
 # Composite indexes for common query patterns
+Index('idx_customer_user', CustomerProfileDB.user_id)
 Index('idx_goals_customer_priority', GoalDB.customer_id, GoalDB.priority)
 Index('idx_goals_customer_type', GoalDB.customer_id, GoalDB.goal_type)
 Index('idx_plans_customer_status', PlanDB.customer_id, PlanDB.status)

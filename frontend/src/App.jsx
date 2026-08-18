@@ -1,6 +1,7 @@
 import { useApp, STEPS } from './context/AppContext.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import ProgressStepper from './components/ProgressStepper.jsx'
+import { MockDataBanner } from './components/MockDataBanner.jsx'
 import ProfileForm from './pages/ProfileForm.jsx'
 import RiskQuestionnaire from './pages/RiskQuestionnaire.jsx'
 import GoalInput from './pages/GoalInput.jsx'
@@ -32,11 +33,17 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <AuthLanding />
+    return (
+      <>
+        <MockDataBanner />
+        <AuthLanding />
+      </>
+    )
   }
 
   return (
     <div className="app-shell">
+      <MockDataBanner />
       <header className="app-header">
         <div className="app-header__inner">
           <div className="brand">

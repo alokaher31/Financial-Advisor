@@ -67,24 +67,32 @@ def chat(
             )
             context_messages = list(reversed(recent_messages))
         
-        # TODO: Call chatbot module here (Member 4's work)
-        # For now, return a placeholder response
-        # from app.genai.chatbot import get_chatbot_response
-        # assistant_response = get_chatbot_response(
-        #     customer=customer,
-        #     user_message=request.message,
-        #     conversation_history=context_messages
-        # )
+        # Call real chatbot with Groq LLM
+        from app.genai.chatbot import get_chatbot_response
         
-        # Placeholder response
-        assistant_response = (
-            f"Thank you for your question about '{request.message}'. "
-            f"I'm your financial advisor assistant. "
-            f"Based on your profile (monthly income: ₹{customer.monthly_income:,.0f}, "
-            f"monthly surplus: ₹{customer.monthly_surplus:,.0f}), "
-            f"I can help you with financial planning, investment strategies, and goal setting. "
-            f"[This is a placeholder - chatbot module will provide detailed responses]"
-        )
+        # Format conversation history for chatbot
+        formatted_history = []
+        for msg in context_messages:
+            formatted_history.append({
+                "role": msg.role.value if hasattr(msg.role, 'value') else msg.role,
+                "content": msg.message if hasattr(msg, 'message') else msg.content
+            })
+        
+        # Generate AI response
+        try:
+            assistant_response = get_chatbot_response(
+                customer_id=request.customer_id,
+                user_message=request.message,
+                conversation_history=formatted_history,
+                db=db
+            )
+        except Exception as e:
+            logger.error(f"Chatbot error: {e}")
+            # Fallback response if chatbot fails
+            assistant_response = (
+                f"I apologize, but I'm experiencing technical difficulties. "
+                f"Please try again in a moment. If the issue persists, please contact support."
+            )
         
         # Save assistant message
         assistant_message = ChatMessageCreate(

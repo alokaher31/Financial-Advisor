@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.utils.exceptions import CustomerNotFoundException
 from app.utils.logger import logger
+from app.utils.security import get_current_user, require_customer_ownership
 
 router = APIRouter(prefix="/profile", tags=["Customer Profile"])
 
@@ -23,10 +24,13 @@ router = APIRouter(prefix="/profile", tags=["Customer Profile"])
 @router.post("/", response_model=CustomerProfile, status_code=status.HTTP_201_CREATED)
 def create_customer_profile(
     profile: CustomerProfileCreate,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Create a new customer profile.
+    
+    Requires authentication. The profile will be linked to the authenticated user.
     
     Automatically calculates:
     - Net worth (assets - liabilities)
@@ -34,8 +38,8 @@ def create_customer_profile(
     - Debt-to-income ratio
     """
     try:
-        logger.info(f"Creating customer profile for: {profile.name}")
-        db_profile = crud.create_customer_profile(db, profile)
+        logger.info(f"Creating customer profile for user {current_user.id}: {profile.name}")
+        db_profile = crud.create_customer_profile(db, profile, user_id=current_user.id)
         logger.info(f"Customer profile created with ID: {db_profile.id}")
         return db_profile
     except Exception as e:
@@ -49,9 +53,17 @@ def create_customer_profile(
 @router.get("/{customer_id}", response_model=CustomerProfile)
 def get_customer_profile(
     customer_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Get a customer profile by ID."""
+    """
+    Get a customer profile by ID.
+    
+    Requires authentication. Users can only access their own profiles.
+    """
+    # Verify ownership
+    require_customer_ownership(current_user.id, customer_id, db)
+    
     db_profile = crud.get_customer_profile(db, customer_id)
     if not db_profile:
         logger.warning(f"Customer profile not found: {customer_id}")
@@ -64,12 +76,18 @@ def get_customer_profile(
 
 @router.get("/", response_model=List[CustomerProfile])
 def list_customer_profiles(
+    current_user = Depends(get_current_user),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
-    """List all customer profiles with pagination."""
-    profiles = crud.get_customer_profiles(db, skip=skip, limit=limit)
+    """
+    List customer profiles for the authenticated user.
+    
+    Requires authentication. Users can only see their own profiles.
+    """
+    # Get only profiles belonging to the current user
+    profiles = crud.get_user_customer_profiles(db, user_id=current_user.id, skip=skip, limit=limit)
     return profiles
 
 
@@ -77,13 +95,19 @@ def list_customer_profiles(
 def update_customer_profile(
     customer_id: int,
     profile_update: CustomerProfileUpdate,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Update a customer profile.
     
+    Requires authentication. Users can only update their own profiles.
+    
     Automatically recalculates financial metrics.
     """
+    # Verify ownership
+    require_customer_ownership(current_user.id, customer_id, db)
+    
     db_profile = crud.update_customer_profile(db, customer_id, profile_update)
     if not db_profile:
         raise HTTPException(
@@ -97,8 +121,16 @@ def update_customer_profile(
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_customer_profile(
     customer_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """
+    Delete a customer profile.
+    
+    Requires authentication. Users can only delete their own profiles.
+    """
+    # Verify ownership
+    require_customer_ownership(current_user.id, customer_id, db)
     """Delete a customer profile and all related data (cascade)."""
     success = crud.delete_customer_profile(db, customer_id)
     if not success:

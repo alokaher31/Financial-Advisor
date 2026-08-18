@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     
     # Security Settings
     SECRET_KEY: str = "your-secret-key-change-in-production"
+    JWT_SECRET_KEY: str = "your-jwt-secret-key-here"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_MINUTES: int = 1440  # 24 hours
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     
     # Logging Settings

@@ -23,6 +23,8 @@ def calculate_whatif_scenario(
     adjustment_parameter: str,
     adjusted_value: float,
     plan_name: str = "Balanced",
+    scenario_type: str = None,
+    original_scenario_amount: float = None,
 ) -> Dict[str, Any]:
     """
     Calculate a What-If scenario by comparing base and adjusted plans.
@@ -42,6 +44,8 @@ def calculate_whatif_scenario(
                              'time_horizon_years', 'current_amount', 'target_amount')
         adjusted_value: New value for the parameter
         plan_name: Which plan to compare (Conservative, Balanced, or Growth). Default: Balanced
+        scenario_type: Original scenario type (e.g., 'extra_monthly_investment')
+        original_scenario_amount: Original amount from the user request
     
     Returns:
         Dictionary with What-If analysis results containing:
@@ -63,7 +67,9 @@ def calculate_whatif_scenario(
         ...     historical_data=data,
         ...     adjustment_parameter='monthly_expenses',
         ...     adjusted_value=50000,
-        ...     plan_name='Balanced'
+        ...     plan_name='Balanced',
+        ...     scenario_type='extra_monthly_investment',
+        ...     original_scenario_amount=10000
         ... )
     """
     
@@ -133,26 +139,36 @@ def calculate_whatif_scenario(
     # Determine if gap improved (moved closer to zero or became positive)
     gap_improvement = gap_change > 0
     
-    # Create scenario name and type
-    change = adjusted_value - original_value
-    parameter_display = adjustment_parameter.replace('_', ' ').title()
-    
-    if change > 0:
-        scenario_name = f"Increase {parameter_display} by ₹{abs(change):,.2f}"
-        scenario_type = f"{adjustment_parameter}_increase"
-    elif change < 0:
-        scenario_name = f"Reduce {parameter_display} by ₹{abs(change):,.2f}"
-        scenario_type = f"{adjustment_parameter}_decrease"
+    # Create scenario name and type based on the original request
+    if scenario_type == "extra_monthly_investment" and original_scenario_amount:
+        scenario_name = f"Increase Monthly Investment by ₹{original_scenario_amount:,.2f}"
+        scenario_type_final = "monthly_investment_increase"
+        # For display purposes, show the actual contribution change
+        parameter_display = "Monthly Investment"
+        original_surplus = customer_profile['monthly_income'] - customer_profile['monthly_expenses']
+        adjusted_surplus = customer_profile['monthly_income'] - adjusted_value
+        change = adjusted_surplus - original_surplus
     else:
-        scenario_name = f"No change in {parameter_display}"
-        scenario_type = f"{adjustment_parameter}_no_change"
+        # Fallback to the old logic for other scenarios
+        change = adjusted_value - original_value
+        parameter_display = adjustment_parameter.replace('_', ' ').title()
+        
+        if change > 0:
+            scenario_name = f"Increase {parameter_display} by ₹{abs(change):,.2f}"
+            scenario_type_final = f"{adjustment_parameter}_increase"
+        elif change < 0:
+            scenario_name = f"Reduce {parameter_display} by ₹{abs(change):,.2f}"
+            scenario_type_final = f"{adjustment_parameter}_decrease"
+        else:
+            scenario_name = f"No change in {parameter_display}"
+            scenario_type_final = f"{adjustment_parameter}_no_change"
     
     # Build result
     return {
         "scenario_name": scenario_name,
-        "scenario_type": scenario_type,
+        "scenario_type": scenario_type_final,
         "adjustments": {
-            "parameter": adjustment_parameter,
+            "parameter": parameter_display.lower().replace(' ', '_'),
             "original_value": float(original_value),
             "adjusted_value": float(adjusted_value),
             "change": float(change),

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_
 
 from app.db.db_models import (
-    CustomerProfileDB, GoalDB, PlanDB,
+    UserDB, CustomerProfileDB, GoalDB, PlanDB,
     RiskAssessmentDB, ChatMessageDB
 )
 from app.models import (
@@ -21,23 +21,150 @@ from app.models import (
 from app.core.net_worth_calculator import (
     calculate_net_worth,
     calculate_monthly_surplus,
-    calculate_debt_to_income_ratio
+    calculate_debt_to_income_ratio,
+    calculate_savings_rate,
 )
 from app.core.goal_calculator import calculate_future_value
 from app.core.risk_scoring import calculate_risk_score, classify_risk
 
 
 # ============================================================================
+# User CRUD Operations (Authentication)
+# ============================================================================
+
+def create_user(db: Session, name: str, email: str, hashed_password: str) -> UserDB:
+    """
+    Create a new user account.
+    
+    Args:
+        db: Database session
+        name: User's full name
+        email: User's email address
+        hashed_password: Pre-hashed password
+        
+    Returns:
+        Created user object
+    """
+    db_user = UserDB(
+        name=name,
+        email=email,
+        hashed_password=hashed_password
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+def get_user_by_id(db: Session, user_id: int) -> Optional[UserDB]:
+    """
+    Get a user by ID.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        
+    Returns:
+        User object if found, None otherwise
+    """
+    return db.query(UserDB).filter(UserDB.id == user_id).first()
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[UserDB]:
+    """
+    Get a user by email address.
+    
+    Args:
+        db: Database session
+        email: User's email address
+        
+    Returns:
+        User object if found, None otherwise
+    """
+    return db.query(UserDB).filter(UserDB.email == email).first()
+
+
+def update_user(db: Session, user_id: int, name: Optional[str] = None, email: Optional[str] = None) -> Optional[UserDB]:
+    """
+    Update user information.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        name: New name (optional)
+        email: New email (optional)
+        
+    Returns:
+        Updated user object if found, None otherwise
+    """
+    db_user = get_user_by_id(db, user_id)
+    if not db_user:
+        return None
+    
+    if name is not None:
+        db_user.name = name
+    if email is not None:
+        db_user.email = email
+    
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+def update_user_password(db: Session, user_id: int, hashed_password: str) -> Optional[UserDB]:
+    """
+    Update user password.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        hashed_password: New hashed password
+        
+    Returns:
+        Updated user object if found, None otherwise
+    """
+    db_user = get_user_by_id(db, user_id)
+    if not db_user:
+        return None
+    
+    db_user.hashed_password = hashed_password
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+def delete_user(db: Session, user_id: int) -> bool:
+    """
+    Delete a user account and all associated data.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        
+    Returns:
+        True if user was deleted, False if not found
+    """
+    db_user = get_user_by_id(db, user_id)
+    if not db_user:
+        return False
+    
+    db.delete(db_user)
+    db.commit()
+    return True
+
+
+# ============================================================================
 # Customer Profile CRUD Operations
 # ============================================================================
 
-def create_customer_profile(db: Session, profile: CustomerProfileCreate) -> CustomerProfileDB:
+def create_customer_profile(db: Session, profile: CustomerProfileCreate, user_id: Optional[int] = None) -> CustomerProfileDB:
     """
     Create a new customer profile with calculated financial metrics.
 
     Args:
         db: Database session
         profile: Customer profile data
+        user_id: Optional user ID to link profile to authenticated user
 
     Returns:
         Created customer profile with calculated fields
@@ -45,8 +172,10 @@ def create_customer_profile(db: Session, profile: CustomerProfileCreate) -> Cust
     net_worth = calculate_net_worth(profile.total_assets, profile.total_liabilities)
     monthly_surplus = calculate_monthly_surplus(profile.monthly_income, profile.monthly_expenses)
     debt_to_income = calculate_debt_to_income_ratio(profile.total_liabilities, profile.monthly_income)
+    savings_rate = calculate_savings_rate(monthly_surplus, profile.monthly_income)
 
     db_profile = CustomerProfileDB(
+        user_id=user_id,
         name=profile.name,
         age=profile.age,
         occupation=profile.occupation,
@@ -56,6 +185,7 @@ def create_customer_profile(db: Session, profile: CustomerProfileCreate) -> Cust
         total_liabilities=profile.total_liabilities,
         net_worth=net_worth,
         monthly_surplus=monthly_surplus,
+        savings_rate=savings_rate,
         debt_to_income_ratio=debt_to_income,
     )
 
@@ -73,6 +203,24 @@ def get_customer_profile(db: Session, customer_id: int) -> Optional[CustomerProf
 def get_customer_profiles(db: Session, skip: int = 0, limit: int = 100) -> List[CustomerProfileDB]:
     """Get all customer profiles with pagination."""
     return db.query(CustomerProfileDB).offset(skip).limit(limit).all()
+
+
+def get_user_customer_profiles(db: Session, user_id: int, skip: int = 0, limit: int = 100) -> List[CustomerProfileDB]:
+    """
+    Get all customer profiles for a specific user.
+    
+    Args:
+        db: Database session
+        user_id: User ID
+        skip: Number of records to skip
+        limit: Maximum number of records to return
+        
+    Returns:
+        List of customer profiles belonging to the user
+    """
+    return db.query(CustomerProfileDB).filter(
+        CustomerProfileDB.user_id == user_id
+    ).offset(skip).limit(limit).all()
 
 
 def update_customer_profile(

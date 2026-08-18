@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.jsx'
 import { comparePlans, selectPlan } from '../api/apiClient.js'
 import { useAsyncAction } from '../hooks/useAsyncAction.js'
 import PlanCard from '../components/PlanCard.jsx'
+import MarkdownRenderer from '../components/MarkdownRenderer.jsx'
 import DisclaimerBanner from '../components/DisclaimerBanner.jsx'
 import ErrorState from '../components/ErrorState.jsx'
 import EmptyState from '../components/EmptyState.jsx'
@@ -97,7 +98,8 @@ export default function PlanComparison() {
 
         {state.comparison?.summary && (
           <div className="plan-card__ai-note mt-4">
-            <strong>AI comparison:</strong> {state.comparison.summary}
+            <strong>AI comparison:</strong>{' '}
+            <MarkdownRenderer>{state.comparison.summary}</MarkdownRenderer>
           </div>
         )}
       </div>

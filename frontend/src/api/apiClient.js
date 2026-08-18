@@ -31,6 +31,16 @@ const USE_MOCK_DATA =
   String(import.meta.env.VITE_USE_MOCK_DATA ?? 'true').toLowerCase() !==
   'false';
 
+// Warn if running on mock data
+if (USE_MOCK_DATA) {
+  console.warn(
+    '⚠️ WARNING: Running on MOCK DATA. Backend is not connected.\n' +
+    'To connect to the real backend:\n' +
+    '1. Create frontend/.env.local with VITE_USE_MOCK_DATA=false\n' +
+    '2. Ensure backend is running at ' + API_BASE_URL
+  );
+}
+
 export class ApiError extends Error {
   constructor(message, { status, details } = {}) {
     super(message);
@@ -41,11 +51,24 @@ export class ApiError extends Error {
 }
 
 async function request(path, { method = 'GET', body } = {}) {
+  // Get token from localStorage
+  const token = window.localStorage.getItem('finance_advisor_token');
+  
   let response;
   try {
+    const headers = {};
+    
+    if (body) {
+      headers['Content-Type'] = 'application/json';
+    }
+    
+    if (token && token !== 'demo_token') {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
     response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (networkError) {
@@ -61,6 +84,16 @@ async function request(path, { method = 'GET', body } = {}) {
   const payload = isJson ? await response.json().catch(() => null) : null;
 
   if (!response.ok) {
+    // Handle 401 Unauthorized - token expired or invalid
+    if (response.status === 401) {
+      // Clear invalid token
+      window.localStorage.removeItem('finance_advisor_token');
+      window.localStorage.removeItem('finance_advisor_user');
+      
+      const message = 'Not authenticated. Please log in again.';
+      throw new ApiError(message, { status: response.status, details: payload });
+    }
+    
     const message =
       (payload && (payload.message || payload.detail || payload.error)) ||
       `Request failed with status ${response.status}`;

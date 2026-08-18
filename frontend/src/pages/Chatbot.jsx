@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.jsx'
 import { sendChatMessage } from '../api/apiClient.js'
 import { useAsyncAction } from '../hooks/useAsyncAction.js'
 import DisclaimerBanner from '../components/DisclaimerBanner.jsx'
+import MarkdownRenderer from '../components/MarkdownRenderer.jsx'
 import WhatIfPanel from '../components/WhatIfPanel.jsx'
 import { RiskBadge } from '../components/ui/Badge.jsx'
 import { SUGGESTED_QUESTIONS } from '../data/suggestedQuestions.js'
@@ -125,7 +126,11 @@ export default function Chatbot() {
                       : 'chat-bubble--assistant'
                 }`}
               >
-                {message.text}
+                {message.role === 'user' ? (
+                  message.text
+                ) : (
+                  <MarkdownRenderer>{message.text}</MarkdownRenderer>
+                )}
               </div>
             </div>
           ))}

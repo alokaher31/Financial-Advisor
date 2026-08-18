@@ -9,4 +9,5 @@ dist/
 venv/
 .DS_Store
 backend/.env
+backend/_archived/
 MEMBER_2_IMPLEMENTATION_PLAN.md

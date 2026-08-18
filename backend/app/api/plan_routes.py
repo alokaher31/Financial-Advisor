@@ -389,9 +389,15 @@ def whatif_analysis(
         # Map scenario type to whatif_analyzer parameter
         scenario = request.scenario
         if scenario.type == "extra_monthly_investment":
-            # Calculate adjusted monthly expenses (lower expenses = more investment)
+            # This is an INVESTMENT INCREASE scenario - calculate the new surplus available
+            # Original surplus = income - expenses
+            # New surplus = original surplus + extra amount
+            original_surplus = customer.monthly_income - customer.monthly_expenses
+            new_surplus = original_surplus + scenario.amount
+            new_expenses = customer.monthly_income - new_surplus
+            
             adjustment_parameter = "monthly_expenses"
-            adjusted_value = customer.monthly_expenses - scenario.amount
+            adjusted_value = new_expenses
             if adjusted_value < 0:
                 adjusted_value = 0
         elif scenario.type in ("monthly_income", "monthly_expenses", "time_horizon_years",
@@ -413,11 +419,26 @@ def whatif_analysis(
             adjustment_parameter=adjustment_parameter,
             adjusted_value=adjusted_value,
             plan_name=db_plan.plan_name,
+            scenario_type=scenario.type,
+            original_scenario_amount=scenario.amount,
         )
 
         base = whatif_result.get("base_plan", {})
         adjusted = whatif_result.get("adjusted_plan", {})
         impact = whatif_result.get("impact", {})
+
+        # Calculate actual contribution amounts for before/after display
+        base_surplus = customer.monthly_income - customer.monthly_expenses
+        adjusted_surplus = customer.monthly_income - adjusted_value if adjustment_parameter == "monthly_expenses" else base_surplus
+        
+        # For extra_monthly_investment scenarios, show the actual contribution amounts
+        if scenario.type == "extra_monthly_investment":
+            before_contribution = base_surplus
+            after_contribution = adjusted_surplus
+        else:
+            # For other scenarios, fall back to required monthly investment
+            before_contribution = base.get("required_monthly_investment", 0)
+            after_contribution = adjusted.get("required_monthly_investment", 0)
 
         # Try to generate narration
         explanation = (
@@ -432,12 +453,12 @@ def whatif_analysis(
 
         return {
             "before": {
-                "monthly_investment": base.get("required_monthly_investment", 0),
+                "monthly_investment": before_contribution,
                 "projected_corpus": base.get("projected_corpus", 0),
                 "gap_vs_target": base.get("gap_vs_target", 0),
             },
             "after": {
-                "monthly_investment": adjusted.get("required_monthly_investment", 0),
+                "monthly_investment": after_contribution,
                 "projected_corpus": adjusted.get("projected_corpus", 0),
                 "gap_vs_target": adjusted.get("gap_vs_target", 0),
             },

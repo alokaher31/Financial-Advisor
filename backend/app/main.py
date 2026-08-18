@@ -15,6 +15,7 @@ from app.api import (
     goal_router,
     plan_router,
     chat_router,
+    auth_router,
 )
 from app.utils.exceptions import (
     FinancialAdvisorException,
@@ -81,6 +82,7 @@ app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 # Register API routers
+app.include_router(auth_router, prefix=settings.API_V1_PREFIX)
 app.include_router(profile_router, prefix=settings.API_V1_PREFIX)
 app.include_router(risk_router, prefix=settings.API_V1_PREFIX)
 app.include_router(goal_router, prefix=settings.API_V1_PREFIX)
@@ -123,6 +125,7 @@ async def api_info():
         "version": settings.APP_VERSION,
         "api_prefix": settings.API_V1_PREFIX,
         "endpoints": {
+            "auth": f"{settings.API_V1_PREFIX}/auth",
             "profiles": f"{settings.API_V1_PREFIX}/profile",
             "risk_assessments": f"{settings.API_V1_PREFIX}/risk",
             "goals": f"{settings.API_V1_PREFIX}/goal",

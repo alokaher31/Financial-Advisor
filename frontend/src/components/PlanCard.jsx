@@ -1,4 +1,5 @@
 import AllocationChart from './AllocationChart.jsx'
+import MarkdownRenderer from './MarkdownRenderer.jsx'
 import { RiskBadge } from './ui/Badge.jsx'
 import { formatCurrency, formatPercent, formatSignedCurrency } from '../utils/format.js'
 
@@ -68,7 +69,8 @@ export default function PlanCard({ plan, isSelected, onSelect, onViewDetails, se
 
       {plan.explanation && (
         <div className="plan-card__ai-note">
-          <strong>AI insight:</strong> {plan.explanation}
+          <strong>AI insight:</strong>{' '}
+          <MarkdownRenderer>{plan.explanation}</MarkdownRenderer>
         </div>
       )}
 

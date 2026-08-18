@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext.jsx'
 import { runWhatIf } from '../api/apiClient.js'
 import { useAsyncAction } from '../hooks/useAsyncAction.js'
 import ErrorState from './ErrorState.jsx'
+import MarkdownRenderer from './MarkdownRenderer.jsx'
 import DisclaimerBanner from './DisclaimerBanner.jsx'
 import { formatCurrency } from '../utils/format.js'
 
@@ -103,7 +104,8 @@ export default function WhatIfPanel() {
 
           {result.explanation && (
             <div className="plan-card__ai-note mt-4">
-              <strong>AI explanation:</strong> {result.explanation}
+              <strong>AI explanation:</strong>{' '}
+              <MarkdownRenderer>{result.explanation}</MarkdownRenderer>
             </div>
           )}
 
