@@ -40,7 +40,7 @@ export default function PlanComparison() {
 
   async function handleSelect(plan) {
     setSelectingPlanName(plan.planName)
-    const result = await runSelect({ profileId: state.profile.result?.profileId, planName: plan.planName })
+    const result = await runSelect({ planId: plan.planId, profileId: state.profile.result?.profileId, planName: plan.planName })
     setSelectingPlanName(null)
     if (!result) return
     dispatch({ type: 'SET_SELECTED_PLAN', plan })

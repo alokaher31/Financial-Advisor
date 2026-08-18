@@ -1,8 +1,10 @@
 __pycache__/
 *.py[cod]
 .env
+.env.local
 *.db
 node_modules/
+dist/
 .venv/
 venv/
 .DS_Store

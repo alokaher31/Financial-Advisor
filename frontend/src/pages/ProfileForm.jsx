@@ -24,6 +24,8 @@ const LIABILITY_FIELDS = [
 
 function initialFormState(saved) {
   return {
+    name: saved?.name ?? '',
+    occupation: saved?.occupation ?? '',
     age: saved?.age ?? '',
     monthly_income: saved?.monthly_income ?? '',
     monthly_expenses: saved?.monthly_expenses ?? '',
@@ -59,6 +61,8 @@ export default function ProfileForm() {
 
   function validate() {
     const nextErrors = {
+      name: form.name.trim() ? null : 'Name is required',
+      occupation: form.occupation.trim() ? null : 'Occupation is required',
       age: validateRequiredNumber(form.age, { min: 1, max: 120, label: 'Age' }),
       monthly_income: validateRequiredNumber(form.monthly_income, { min: 0, label: 'Monthly income' }),
       monthly_expenses: validateRequiredNumber(form.monthly_expenses, { min: 0, label: 'Monthly expenses' }),
@@ -80,6 +84,8 @@ export default function ProfileForm() {
 
     const toNum = (v) => (v === '' ? 0 : Number(v))
     const payload = {
+      name: form.name.trim(),
+      occupation: form.occupation.trim(),
       age: toNum(form.age),
       monthly_income: toNum(form.monthly_income),
       monthly_expenses: toNum(form.monthly_expenses),
@@ -108,6 +114,26 @@ export default function ProfileForm() {
         <fieldset className="form-section">
           <legend>Basics</legend>
           <div className="form-grid">
+            <FormField id="name" label="Full Name" required error={errors.name}>
+              <input
+                id="name"
+                className={`input ${errors.name ? 'input--error' : ''}`}
+                type="text"
+                placeholder="e.g. Rajesh Kumar"
+                value={form.name}
+                onChange={(e) => updateField('name', e.target.value)}
+              />
+            </FormField>
+            <FormField id="occupation" label="Occupation" required error={errors.occupation}>
+              <input
+                id="occupation"
+                className={`input ${errors.occupation ? 'input--error' : ''}`}
+                type="text"
+                placeholder="e.g. Software Engineer"
+                value={form.occupation}
+                onChange={(e) => updateField('occupation', e.target.value)}
+              />
+            </FormField>
             <FormField id="age" label="Age" required error={errors.age}>
               <input
                 id="age"

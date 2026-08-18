@@ -2,22 +2,11 @@
  * Centralized backend client. Every network call in this app goes through a
  * function exported here — pages/components never call fetch() directly.
  *
- * CONTRACT NOTE: As of this writing, backend/app/api/*.py and
- * backend/app/models/*.py are empty stub files, and docs/api_spec.md is
- * empty too, so there is no committed request/response schema yet for
- * POST /api/profile, /api/risk-assessment, /api/goal, /api/plans/generate,
- * /api/plans/compare, /api/plans/select, /api/chat, /api/whatif. The shapes
- * assumed below were reverse-engineered from the one part of the backend
- * that IS implemented — the deterministic core:
- *   - backend/app/core/net_worth_calculator.py (assets/liabilities/income/expenses -> net worth, surplus, DTI, savings rate)
- *   - backend/app/core/goal_calculator.py (target/current amount, horizon years, annual return -> projected corpus, required SIP, gap)
- *   - backend/app/core/risk_scoring.py (question/answer ID map -> risk_score 0-100, risk_category Conservative/Moderate/Aggressive)
- *   - backend/app/core/plan_generator.py (-> plan_name, risk_level, allocation, blended_expected_return, projected_corpus, gap_vs_target, required_monthly_investment)
+ * CONTRACT NOTE: This file is the ONLY integration seam between frontend and
+ * backend. It maps frontend field names to backend expectations and normalises
+ * backend responses into the shapes the UI components expect.
  *
- * Every response is passed through a normalize* function before use, so if
- * the real routes ship with slightly different field names/casing, only
- * this file needs to change — not every page. Set VITE_USE_MOCK_DATA=false
- * once the real endpoints exist (see frontend/.env.example).
+ * Set VITE_USE_MOCK_DATA=false in .env.local to use the real backend API.
  */
 
 import {
@@ -37,7 +26,7 @@ const API_BASE_URL = (
 ).replace(/\/+$/, '');
 
 // Default to mock mode unless explicitly disabled, so the app is usable
-// standalone while backend/app/api/*.py routes are still empty stubs.
+// standalone while backend routes are not available.
 const USE_MOCK_DATA =
   String(import.meta.env.VITE_USE_MOCK_DATA ?? 'true').toLowerCase() !==
   'false';
@@ -54,7 +43,7 @@ export class ApiError extends Error {
 async function request(path, { method = 'GET', body } = {}) {
   let response;
   try {
-    response = await fetch(`${API_BASE_URL}/api${path}`, {
+    response = await fetch(`${API_BASE_URL}/api/v1${path}`, {
       method,
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
@@ -85,16 +74,44 @@ function pick(source, key, fallback) {
   return source && source[key] !== undefined ? source[key] : fallback;
 }
 
+// --- Helpers ---------------------------------------------------------------
+
+/** Sum all numeric values in an object (used for assets/liabilities). */
+function sumValues(obj) {
+  if (!obj || typeof obj !== 'object') return 0;
+  return Object.values(obj).reduce((s, v) => s + (Number(v) || 0), 0);
+}
+
+/** Map frontend display goal-type to backend enum value. */
+const GOAL_TYPE_MAP = {
+  'Retirement': 'retirement',
+  'Home Purchase': 'home_purchase',
+  'Education': 'education',
+  'Emergency Fund': 'emergency_fund',
+  'Wealth Creation': 'investment',
+  'Other': 'other',
+};
+
+/** Map frontend display priority to backend enum value. */
+const PRIORITY_MAP = {
+  'High': 'high',
+  'Medium': 'medium',
+  'Low': 'low',
+};
+
 // --- Normalizers ----------------------------------------------------------
 
 function normalizeProfileResponse(data) {
   return {
-    profileId: pick(data, 'profile_id', null),
+    profileId: pick(data, 'id', pick(data, 'profile_id', null)),
     totalAssets: pick(data, 'total_assets', undefined),
     totalLiabilities: pick(data, 'total_liabilities', undefined),
     netWorth: pick(data, 'net_worth', undefined),
     monthlySurplus: pick(data, 'monthly_surplus', undefined),
-    savingsRate: pick(data, 'savings_rate', undefined),
+    savingsRate:
+      typeof data?.monthly_surplus === 'number' && typeof data?.monthly_income === 'number' && data.monthly_income > 0
+        ? (data.monthly_surplus / data.monthly_income) * 100
+        : pick(data, 'savings_rate', undefined),
     debtToIncomeRatio: pick(data, 'debt_to_income_ratio', undefined),
     raw: data,
   };
@@ -104,19 +121,21 @@ function normalizeRiskResult(data) {
   return {
     riskScore: pick(data, 'risk_score', undefined),
     riskCategory: pick(data, 'risk_category', undefined),
+    riskAssessmentId: pick(data, 'id', null),
     raw: data,
   };
 }
 
 function normalizeGoalResponse(data) {
   return {
-    goalId: pick(data, 'goal_id', null),
+    goalId: pick(data, 'id', pick(data, 'goal_id', null)),
     raw: data,
   };
 }
 
 function normalizePlan(plan) {
   return {
+    planId: pick(plan, 'id', null),
     planName: pick(plan, 'plan_name', pick(plan, 'name', 'Plan')),
     riskLevel: pick(plan, 'risk_level', undefined),
     allocation: pick(plan, 'allocation', {}),
@@ -152,8 +171,8 @@ function normalizeComparisonResponse(data) {
 
 function normalizeChatResponse(data) {
   return {
-    conversationId: pick(data, 'conversation_id', undefined),
-    reply: pick(data, 'reply', pick(data, 'message', undefined)),
+    conversationId: pick(data, 'session_id', pick(data, 'conversation_id', undefined)),
+    reply: pick(data, 'message', pick(data, 'reply', undefined)),
     raw: data,
   };
 }
@@ -171,8 +190,9 @@ function normalizeWhatIfResponse(data) {
 // --- Public API -------------------------------------------------------
 
 /**
- * POST /api/profile
- * @param {object} profileInput { age, monthly_income, monthly_expenses, savings, assets, liabilities }
+ * POST /api/v1/profile
+ * Maps frontend { age, monthly_income, monthly_expenses, savings, assets, liabilities, name, occupation }
+ * to backend { name, age, occupation, monthly_income, monthly_expenses, total_assets, total_liabilities }
  */
 export async function createProfile(profileInput) {
   if (USE_MOCK_DATA) {
@@ -182,100 +202,142 @@ export async function createProfile(profileInput) {
       ...profileInput,
     });
   }
+
+  // Map frontend fields to backend expectations
+  const backendPayload = {
+    name: profileInput.name || 'Customer',
+    age: profileInput.age,
+    occupation: profileInput.occupation || 'Professional',
+    monthly_income: profileInput.monthly_income,
+    monthly_expenses: profileInput.monthly_expenses,
+    total_assets: typeof profileInput.assets === 'object'
+      ? sumValues(profileInput.assets)
+      : (profileInput.total_assets || profileInput.assets || 0),
+    total_liabilities: typeof profileInput.liabilities === 'object'
+      ? sumValues(profileInput.liabilities)
+      : (profileInput.total_liabilities || profileInput.liabilities || 0),
+  };
+
   const data = await request('/profile', {
     method: 'POST',
-    body: profileInput,
+    body: backendPayload,
   });
   return normalizeProfileResponse(data);
 }
 
 /**
- * POST /api/risk-assessment
- * @param {object} params { profileId, answers: { [questionId]: answerId } } — answers must
- * use the exact IDs from src/data/riskQuestions.js (mirrored from risk_scoring.py).
+ * POST /api/v1/risk
+ * Maps: profile_id → customer_id, path /risk-assessment → /risk
  */
 export async function submitRiskAssessment({ profileId, answers }) {
   if (USE_MOCK_DATA) {
     await mockDelay();
     return normalizeRiskResult(MOCK_RISK_RESULT);
   }
-  const data = await request('/risk-assessment', {
+  const data = await request('/risk', {
     method: 'POST',
-    body: { profile_id: profileId, answers },
+    body: {
+      customer_id: profileId,
+      answers,
+    },
   });
   return normalizeRiskResult(data);
 }
 
 /**
- * POST /api/goal
- * @param {object} goalInput { profile_id, goal_type, target_amount, current_amount, time_horizon_years, priority }
+ * POST /api/v1/goal
+ * Maps: profile_id → customer_id, current_amount → current_savings,
+ * goal_type/priority display → enum, adds goal_name
  */
 export async function createGoal(goalInput) {
   if (USE_MOCK_DATA) {
     await mockDelay();
     return normalizeGoalResponse({ ...MOCK_GOAL_RESPONSE, ...goalInput });
   }
-  const data = await request('/goal', { method: 'POST', body: goalInput });
+
+  const goalTypeEnum = GOAL_TYPE_MAP[goalInput.goal_type] || goalInput.goal_type?.toLowerCase() || 'other';
+  const priorityEnum = PRIORITY_MAP[goalInput.priority] || goalInput.priority?.toLowerCase() || 'medium';
+
+  const backendPayload = {
+    customer_id: goalInput.profile_id,
+    goal_type: goalTypeEnum,
+    goal_name: `${goalInput.goal_type} Fund`,
+    target_amount: goalInput.target_amount,
+    current_savings: goalInput.current_amount ?? goalInput.current_savings ?? 0,
+    time_horizon_years: goalInput.time_horizon_years,
+    priority: priorityEnum,
+  };
+
+  const data = await request('/goal', { method: 'POST', body: backendPayload });
   return normalizeGoalResponse(data);
 }
 
 /**
- * POST /api/plans/generate
- * @param {object} params { profileId, goalId, riskCategory }
- * @returns {Promise<Array>} three normalized plans (Conservative/Balanced/Growth)
+ * POST /api/v1/plans/generate
+ * Maps: profileId → customer_id, goalId → goal_ids (array),
+ * riskCategory → risk_assessment_id (optional)
  */
-export async function generatePlans({ profileId, goalId, riskCategory }) {
+export async function generatePlans({ profileId, goalId, riskCategory, riskAssessmentId }) {
   if (USE_MOCK_DATA) {
     await mockDelay(900);
     return normalizePlansResponse(MOCK_PLANS);
   }
+
+  const body = {
+    customer_id: profileId,
+    goal_ids: [goalId],
+  };
+  if (riskAssessmentId) {
+    body.risk_assessment_id = riskAssessmentId;
+  }
+
   const data = await request('/plans/generate', {
     method: 'POST',
-    body: {
-      profile_id: profileId,
-      goal_id: goalId,
-      risk_category: riskCategory,
-    },
+    body,
   });
   return normalizePlansResponse(data);
 }
 
 /**
- * POST /api/plans/compare
- * @param {object} params { profileId, goalId, plans } — sends the already-generated
- * plans back so the backend/GenAI layer can narrate a comparison without recomputation.
+ * POST /api/v1/plans/compare
+ * Maps: profileId → customer_id, sends plan_ids from stored plan objects
  */
 export async function comparePlans({ profileId, goalId, plans }) {
   if (USE_MOCK_DATA) {
     await mockDelay(700);
     return normalizeComparisonResponse(MOCK_COMPARISON_SUMMARY);
   }
+
+  // Extract plan IDs from the stored plan objects
+  const planIds = (plans || []).map(p => p.planId).filter(Boolean);
+
   const data = await request('/plans/compare', {
     method: 'POST',
-    body: { profile_id: profileId, goal_id: goalId, plans },
+    body: {
+      customer_id: profileId,
+      plan_ids: planIds,
+    },
   });
   return normalizeComparisonResponse(data);
 }
 
 /**
- * POST /api/plans/select
- * @param {object} params { profileId, planName }
+ * POST /api/v1/plans/{planId}/select
+ * Uses real plan ID instead of plan name
  */
-export async function selectPlan({ profileId, planName }) {
+export async function selectPlan({ planId, profileId, planName }) {
   if (USE_MOCK_DATA) {
     await mockDelay(400);
     return { ...MOCK_SELECT_PLAN_RESPONSE, selected_plan_name: planName };
   }
-  return request('/plans/select', {
+  return request(`/plans/${planId}/select`, {
     method: 'POST',
-    body: { profile_id: profileId, plan_name: planName },
   });
 }
 
 /**
- * POST /api/chat
- * @param {object} params { message, conversationId, context } — context carries whatever
- * IDs (profileId/goalId/selectedPlan) the backend needs to ground its answer.
+ * POST /api/v1/chat
+ * Maps: context.profileId → customer_id, conversationId → session_id
  */
 export async function sendChatMessage({ message, conversationId, context }) {
   if (USE_MOCK_DATA) {
@@ -284,28 +346,31 @@ export async function sendChatMessage({ message, conversationId, context }) {
   }
   const data = await request('/chat', {
     method: 'POST',
-    body: { message, conversation_id: conversationId, context },
+    body: {
+      customer_id: context?.profileId,
+      message,
+      session_id: conversationId || undefined,
+      include_context: true,
+    },
   });
   return normalizeChatResponse(data);
 }
 
 /**
- * POST /api/whatif
- * @param {object} params { profileId, goalId, planName, scenario } — `scenario` describes
- * the hypothetical change, e.g. { type: 'extra_monthly_investment', amount: 5000 }.
- * The backend recalculates deterministically; this function never computes the result.
+ * POST /api/v1/plans/whatif
+ * Maps: profileId → customer_id, planName → plan_id, goalId → goal_id
  */
-export async function runWhatIf({ profileId, goalId, planName, scenario }) {
+export async function runWhatIf({ profileId, goalId, planName, planId, scenario }) {
   if (USE_MOCK_DATA) {
     await mockDelay(800);
     return normalizeWhatIfResponse(MOCK_WHATIF_RESULT);
   }
-  const data = await request('/whatif', {
+  const data = await request('/plans/whatif', {
     method: 'POST',
     body: {
-      profile_id: profileId,
+      customer_id: profileId,
       goal_id: goalId,
-      plan_name: planName,
+      plan_id: planId,
       scenario,
     },
   });
