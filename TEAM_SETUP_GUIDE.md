@@ -67,6 +67,9 @@ cd backend
 # Install dependencies (first time only)
 pip3 install -r requirements.txt
 
+# Note: First run will download the embedding model (~90MB)
+# This is a one-time download and takes ~1-2 minutes
+
 # Start the backend server
 python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -74,6 +77,12 @@ python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 **Expected Output:**
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Initializing database...
+INFO:     Database connection successful
+INFO:     Initializing RAG system...
+INFO:     Loading embedding model: all-MiniLM-L6-v2
+INFO:     Successfully indexed 42 chunks from 5 files
+INFO:     RAG initialization complete
 INFO:     Application startup complete
 ```
 
@@ -200,10 +209,36 @@ If you encounter issues:
 - ✅ Risk assessment questionnaire
 - ✅ Goal setting and tracking
 - ✅ Financial plan generation (3 strategies)
-- ✅ AI chatbot with context (Groq LLM)
+- ✅ **AI chatbot with RAG (Retrieval-Augmented Generation)**
+  - General financial knowledge from curated knowledge base
+  - Customer-specific context from database
+  - Semantic search with vector database (ChromaDB)
 - ✅ What-If scenario analysis
 - ✅ Plan comparison tool
 - ✅ Markdown rendering for AI responses
+
+---
+
+## 🤖 **RAG System Features**
+
+The chatbot uses **RAG (Retrieval-Augmented Generation)** to provide both:
+1. **Personalized advice** based on your financial data
+2. **General financial knowledge** from a curated knowledge base
+
+**Knowledge Base Topics:**
+- Budgeting strategies
+- Debt management
+- Emergency funds
+- Investing and retirement
+- Tax-advantaged accounts
+
+**How it works:**
+- Uses local embeddings (no API costs)
+- Fast semantic search (~30-50ms)
+- Automatically indexes on startup
+- Can be extended with new markdown files
+
+See `docs/rag_implementation.md` for detailed documentation.
 
 ---
 
