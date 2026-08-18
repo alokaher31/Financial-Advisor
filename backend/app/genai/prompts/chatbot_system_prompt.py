@@ -57,16 +57,28 @@ Remember: Your goal is to empower customers with knowledge and confidence to man
 """
 
 
-def get_chatbot_system_prompt(customer_context: str = None) -> str:
+def get_chatbot_system_prompt(customer_context: str = None, rag_context: str = "") -> str:
     """
-    Get the chatbot system prompt, optionally with customer context.
+    Get the chatbot system prompt, optionally with customer context and RAG context.
     
     Args:
         customer_context: Optional string containing customer profile information
+        rag_context: Optional string containing retrieved knowledge base context
         
     Returns:
-        Complete system prompt with or without customer context
+        Complete system prompt with customer and knowledge base context
     """
+    # Build RAG section if context is available
+    rag_section = ""
+    if rag_context and "No relevant knowledge" not in rag_context:
+        rag_section = f"""
+
+## Knowledge Base Reference:
+{rag_context}
+
+Use the above information from our financial knowledge base to provide accurate, well-informed advice. Always personalize it to the customer's specific situation.
+"""
+    
     if customer_context:
         return f"""{CHATBOT_SYSTEM_PROMPT}
 
@@ -74,5 +86,7 @@ def get_chatbot_system_prompt(customer_context: str = None) -> str:
 {customer_context}
 
 Use this customer information to provide personalized advice. Reference their specific financial situation when relevant.
+{rag_section}
 """
-    return CHATBOT_SYSTEM_PROMPT
+    
+    return CHATBOT_SYSTEM_PROMPT + rag_section

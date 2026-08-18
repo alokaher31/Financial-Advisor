@@ -49,6 +49,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Database initialization failed: {e}")
         raise
     
+    # Initialize RAG system
+    logger.info("Initializing RAG system...")
+    try:
+        from app.genai.rag_service import initialize_rag
+        rag_result = initialize_rag()
+        logger.info(f"RAG initialization complete: {rag_result}")
+    except Exception as e:
+        logger.warning(f"RAG initialization failed (chatbot will work without knowledge base): {e}")
+    
     logger.info("Application startup complete")
     
     yield

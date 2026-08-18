@@ -185,3 +185,50 @@ def delete_chat_session(
         )
     logger.info(f"Chat session deleted: customer={customer_id}, session={session_id}")
     return None
+
+
+@router.get("/rag/stats", status_code=status.HTTP_200_OK)
+def get_rag_stats(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get RAG system statistics (knowledge base status).
+    
+    Returns:
+        Statistics about the vector database
+    """
+    try:
+        rag_service = get_rag_service()
+        stats = rag_service.get_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting RAG stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get RAG statistics: {str(e)}"
+        )
+
+
+@router.post("/rag/reinitialize", status_code=status.HTTP_200_OK)
+def reinitialize_rag(
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Reinitialize RAG system and reindex knowledge base.
+    
+    This is useful if knowledge base files have been updated.
+    
+    Returns:
+        Reindexing results
+    """
+    try:
+        from app.genai.rag_service import initialize_rag
+        result = initialize_rag()
+        logger.info(f"RAG reinitialized by user {current_user.get('user_id')}: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Error reinitializing RAG: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reinitialize RAG: {str(e)}"
+        )

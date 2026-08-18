@@ -10,4 +10,5 @@ venv/
 .DS_Store
 backend/.env
 backend/_archived/
+backend/app/genai/chroma_db/
 MEMBER_2_IMPLEMENTATION_PLAN.md

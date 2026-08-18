@@ -1,6 +1,7 @@
 """
 Financial advisor chatbot implementation using Groq LLM.
-Handles conversational queries with customer context and what-if scenario detection.
+Handles conversational queries with customer context, RAG-based knowledge retrieval,
+and what-if scenario detection.
 """
 
 import re
@@ -9,9 +10,11 @@ from sqlalchemy.orm import Session
 
 from app.genai.llm_client import get_llm_client
 from app.genai.retriever import get_customer_context
+from app.genai.rag_service import get_rag_service
 from app.genai.prompts.chatbot_system_prompt import get_chatbot_system_prompt
 from app.genai.whatif_analyzer import analyze_and_narrate_whatif
 from app.data.data_loader import load_historical_data
+from app.utils.logger import logger
 
 
 def detect_whatif_intent(user_message: str) -> Optional[Dict[str, Any]]:
@@ -292,7 +295,7 @@ def _handle_general_query(
     max_tokens: int
 ) -> str:
     """
-    Handle general financial queries using LLM with customer context.
+    Handle general financial queries using LLM with customer context and RAG.
     
     Args:
         user_message: The user's question
@@ -307,8 +310,20 @@ def _handle_general_query(
     # Format customer context for system prompt
     customer_context = _format_customer_context(context)
     
+    # Retrieve relevant knowledge base context using RAG
+    rag_context = ""
+    try:
+        rag_service = get_rag_service()
+        rag_context = rag_service.format_retrieved_context(user_message, top_k=3)
+        
+        if rag_context and "No relevant knowledge" not in rag_context:
+            logger.info(f"RAG retrieved context for query: {user_message[:50]}...")
+    except Exception as e:
+        logger.warning(f"RAG retrieval failed, continuing without knowledge base: {e}")
+        rag_context = ""
+    
     # Get system prompt with customer context
-    system_prompt = get_chatbot_system_prompt(customer_context)
+    system_prompt = get_chatbot_system_prompt(customer_context, rag_context)
     
     # Build conversation with history
     llm_client = get_llm_client()
@@ -334,6 +349,7 @@ def _handle_general_query(
         return response
         
     except Exception as e:
+        logger.error(f"LLM error: {e}")
         return (
             f"I apologize, but I'm having trouble processing your question right now. "
             f"Error: {str(e)}. Please try again or rephrase your question."
