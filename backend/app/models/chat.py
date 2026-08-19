@@ -5,7 +5,7 @@ Chat/Conversational AI Pydantic models for request/response validation.
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MessageRole(str, Enum):
@@ -29,15 +29,13 @@ class ChatMessageCreate(ChatMessageBase):
 
 class ChatMessage(ChatMessageBase):
     """Model for chat message response with database fields."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     customer_id: int
     session_id: Optional[str]
     created_at: datetime
     
-    class Config:
-        from_attributes = True
-
-
 class ChatRequest(BaseModel):
     """Request model for chat interaction."""
     customer_id: int = Field(..., gt=0, description="ID of the customer")

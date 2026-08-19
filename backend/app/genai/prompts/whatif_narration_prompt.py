@@ -82,7 +82,7 @@ IMPACT OF THE ADJUSTMENT
 ═══════════════════════════════════════════════════════════════════════════════
 Projected Corpus Change: ₹{impact['corpus_change']:,.2f}
 Gap Change: ₹{impact['gap_change']:,.2f} ({improvement_text})
-Required Monthly Investment Change: ₹{impact['investment_change']:,.2f}
+Planned Monthly Investment Change: ₹{impact['investment_change']:,.2f}
 
 ═══════════════════════════════════════════════════════════════════════════════
 

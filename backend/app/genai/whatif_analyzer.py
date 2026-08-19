@@ -40,7 +40,8 @@ def calculate_whatif_scenario(
         goal: Dict with 'target_amount', 'current_amount', 'time_horizon_years'
         risk_category: Risk category (Conservative, Moderate, or Aggressive)
         historical_data: Historical returns DataFrame
-        adjustment_parameter: Parameter to adjust ('monthly_income', 'monthly_expenses', 
+        adjustment_parameter: Parameter to adjust ('monthly_investment',
+                             'monthly_income', 'monthly_expenses',
                              'time_horizon_years', 'current_amount', 'target_amount')
         adjusted_value: New value for the parameter
         plan_name: Which plan to compare (Conservative, Balanced, or Growth). Default: Balanced
@@ -75,7 +76,7 @@ def calculate_whatif_scenario(
     
     # Validate adjustment parameter
     valid_parameters = {
-        'monthly_income', 'monthly_expenses', 'time_horizon_years', 
+        'monthly_investment', 'monthly_income', 'monthly_expenses', 'time_horizon_years',
         'current_amount', 'target_amount'
     }
     if adjustment_parameter not in valid_parameters:
@@ -91,8 +92,14 @@ def calculate_whatif_scenario(
         )
     
     # Get original value
-    if adjustment_parameter in ['monthly_income', 'monthly_expenses']:
-        original_value = customer_profile[adjustment_parameter]
+    if adjustment_parameter in ['monthly_investment', 'monthly_income', 'monthly_expenses']:
+        if adjustment_parameter == 'monthly_investment':
+            original_value = customer_profile.get(
+                'monthly_investment',
+                max(customer_profile['monthly_income'] - customer_profile['monthly_expenses'], 0),
+            )
+        else:
+            original_value = customer_profile[adjustment_parameter]
     else:  # goal parameters
         original_value = goal[adjustment_parameter]
     
@@ -113,8 +120,24 @@ def calculate_whatif_scenario(
     adjusted_profile = dict(customer_profile)
     adjusted_goal = dict(goal)
     
-    if adjustment_parameter in ['monthly_income', 'monthly_expenses']:
+    if adjustment_parameter in ['monthly_investment', 'monthly_income', 'monthly_expenses']:
         adjusted_profile[adjustment_parameter] = adjusted_value
+        if (
+            adjustment_parameter in ['monthly_income', 'monthly_expenses']
+            and 'monthly_investment' in customer_profile
+        ):
+            original_surplus = (
+                customer_profile['monthly_income'] - customer_profile['monthly_expenses']
+            )
+            adjusted_surplus = (
+                adjusted_profile['monthly_income'] - adjusted_profile['monthly_expenses']
+            )
+            adjusted_profile['monthly_investment'] = max(
+                customer_profile['monthly_investment']
+                + adjusted_surplus
+                - original_surplus,
+                0,
+            )
     else:
         adjusted_goal[adjustment_parameter] = adjusted_value
     
@@ -134,7 +157,7 @@ def calculate_whatif_scenario(
     # Calculate impact
     corpus_change = adjusted_plan['projected_corpus'] - base_plan['projected_corpus']
     gap_change = adjusted_plan['gap_vs_target'] - base_plan['gap_vs_target']
-    investment_change = adjusted_plan['required_monthly_investment'] - base_plan['required_monthly_investment']
+    investment_change = adjusted_plan['monthly_investment'] - base_plan['monthly_investment']
     
     # Determine if gap improved (moved closer to zero or became positive)
     gap_improvement = gap_change > 0
@@ -145,9 +168,7 @@ def calculate_whatif_scenario(
         scenario_type_final = "monthly_investment_increase"
         # For display purposes, show the actual contribution change
         parameter_display = "Monthly Investment"
-        original_surplus = customer_profile['monthly_income'] - customer_profile['monthly_expenses']
-        adjusted_surplus = customer_profile['monthly_income'] - adjusted_value
-        change = adjusted_surplus - original_surplus
+        change = adjusted_value - original_value
     else:
         # Fallback to the old logic for other scenarios
         change = adjusted_value - original_value

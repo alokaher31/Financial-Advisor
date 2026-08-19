@@ -4,7 +4,7 @@ Customer Profile Pydantic models for request/response validation.
 
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class CustomerProfileBase(BaseModel):
@@ -25,6 +25,14 @@ class CustomerProfileBase(BaseModel):
             raise ValueError("Monthly expenses seem unusually high compared to income")
         return v
 
+    @model_validator(mode="after")
+    def validate_income_for_liabilities(self):
+        if self.monthly_income == 0 and self.total_liabilities > 0:
+            raise ValueError(
+                "Monthly income must be greater than zero when liabilities are present"
+            )
+        return self
+
 
 class CustomerProfileCreate(CustomerProfileBase):
     """Model for creating a new customer profile."""
@@ -44,21 +52,25 @@ class CustomerProfileUpdate(BaseModel):
 
 class CustomerProfile(CustomerProfileBase):
     """Model for customer profile response with database fields."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     net_worth: float = Field(..., description="Calculated net worth")
     monthly_surplus: float = Field(..., description="Calculated monthly surplus")
-    debt_to_income_ratio: float = Field(..., description="Calculated debt to income ratio")
+    debt_to_income_ratio: float = Field(
+        ...,
+        description="Total liabilities divided by annual gross income",
+    )
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
-
-
 class FinancialSummary(BaseModel):
     """Financial summary calculations for a customer."""
     net_worth: float = Field(..., description="Total assets minus total liabilities")
     monthly_surplus: float = Field(..., description="Monthly income minus monthly expenses")
-    debt_to_income_ratio: float = Field(..., description="Total liabilities divided by monthly income")
+    debt_to_income_ratio: float = Field(
+        ...,
+        description="Total liabilities divided by annual gross income",
+    )
     annual_savings_capacity: float = Field(..., description="Monthly surplus times 12")
     financial_health_score: str = Field(..., description="Overall financial health rating")

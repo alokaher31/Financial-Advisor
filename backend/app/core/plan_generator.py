@@ -80,6 +80,68 @@ _VALID_RISK_CATEGORIES = frozenset({"Conservative", "Moderate", "Aggressive"})
 _TWO_DECIMAL_PLACES = Decimal("0.01")
 
 
+def _personalize_allocation(
+    base_allocation: tuple[tuple[str, int], ...],
+    *,
+    risk_category: str,
+    profile: Mapping[str, Any],
+    goal: Mapping[str, Any],
+    years: Real,
+) -> tuple[tuple[str, int], ...]:
+    """Tilt a plan template using inputs that materially affect risk capacity.
+
+    Contribution and target amounts affect the corpus calculation, not the
+    strategic asset mix. Risk tolerance, time horizon, age, and goal liquidity
+    needs adjust equity, with the opposite adjustment applied to debt so every
+    returned allocation still totals exactly 100 percent.
+    """
+
+    equity_shift = {
+        # Assessed willingness/capacity to take risk is the primary signal.
+        # Age and horizon refine it, but should not normally cancel it out.
+        "Conservative": -10,
+        "Moderate": 0,
+        "Aggressive": 10,
+    }[risk_category]
+
+    horizon = _finite_float(years, name="time_horizon_years")
+    if horizon <= 3:
+        equity_shift -= 10
+    elif horizon >= 15:
+        equity_shift += 5
+
+    age_value = profile.get("age")
+    if age_value is not None:
+        age = _finite_float(age_value, name="age")
+        if not 18 <= age <= 100:
+            raise ValueError("age must be between 18 and 100")
+        if age <= 30:
+            equity_shift += 5
+        elif age >= 55:
+            equity_shift -= 10
+        elif age >= 45:
+            equity_shift -= 5
+
+    goal_type = str(goal.get("goal_type", "")).lower()
+    if goal_type in {"emergency_fund", "debt_payoff"}:
+        equity_shift -= 10
+    elif goal_type in {"vehicle", "vacation"}:
+        equity_shift -= 5
+
+    equity_shift = max(-20, min(equity_shift, 15))
+
+    allocation = dict(base_allocation)
+    base_equity = allocation["Equity"]
+    base_debt = allocation["Debt"]
+    desired_equity = max(5, min(85, base_equity + equity_shift))
+    personalized_equity = min(desired_equity, base_equity + base_debt)
+    actual_shift = personalized_equity - base_equity
+    allocation["Equity"] = personalized_equity
+    allocation["Debt"] = base_debt - actual_shift
+
+    return tuple((asset, allocation[asset]) for asset, _ in base_allocation)
+
+
 def _finite_float(value: Real, *, name: str) -> float:
     """Return a finite float while rejecting booleans and non-real values."""
 
@@ -91,6 +153,15 @@ def _finite_float(value: Real, *, name: str) -> float:
         raise ValueError(f"{name} is outside the supported numeric range") from exc
     if not math.isfinite(result):
         raise ValueError(f"{name} must be finite")
+    return result
+
+
+def _nonnegative_float(value: Real, *, name: str) -> float:
+    """Return a finite nonnegative float while rejecting booleans."""
+
+    result = _finite_float(value, name=name)
+    if result < 0:
+        raise ValueError(f"{name} must be greater than or equal to zero")
     return result
 
 
@@ -228,10 +299,13 @@ def generate_plans(
 
     Args:
         customer_profile: Mapping containing at least ``monthly_income`` and
-            ``monthly_expenses``.
+            ``monthly_expenses``. An optional ``monthly_investment`` controls
+            the recurring contribution used by the projection. When omitted,
+            the nonnegative monthly surplus is used for backwards
+            compatibility.
         risk_category: Customer classification: Conservative, Moderate, or
-            Aggressive. It is validated but does not remove any plan, because
-            the product contract requires all three alternatives.
+            Aggressive. It personalizes each plan's asset mix but does not
+            remove alternatives, because all three are shown for comparison.
         goal: Mapping containing ``target_amount``, ``current_amount``, and
             ``time_horizon_years``.
         historical_data: Preloaded summary DataFrame with one row per required
@@ -268,12 +342,22 @@ def generate_plans(
     years = _required_value(goal_data, "time_horizon_years", name="goal")
 
     monthly_surplus = calculate_monthly_surplus(monthly_income, monthly_expenses)
-    projection_contribution = max(monthly_surplus, 0.0)
+    projection_contribution = _nonnegative_float(
+        profile.get("monthly_investment", max(monthly_surplus, 0.0)),
+        name="monthly_investment",
+    )
     returns_by_asset = _validate_historical_data(historical_data)
 
     plans: list[dict[str, object]] = []
     for spec in _PLAN_SPECS:
-        expected_return = _blended_return(spec.allocation, returns_by_asset)
+        allocation = _personalize_allocation(
+            spec.allocation,
+            risk_category=risk_category,
+            profile=profile,
+            goal=goal_data,
+            years=years,
+        )
+        expected_return = _blended_return(allocation, returns_by_asset)
         projected_corpus = calculate_future_value(
             current_amount,
             projection_contribution,
@@ -287,18 +371,40 @@ def generate_plans(
             expected_return,
             years,
         )
+        future_value_of_current_savings = calculate_future_value(
+            current_amount,
+            0,
+            expected_return,
+            years,
+        )
+        contribution_months = round(float(years) * 12)
 
         plans.append(
             {
                 "plan_name": spec.name,
-                "allocation": dict(spec.allocation),
+                "allocation": dict(allocation),
                 "blended_expected_return": _round_for_output(expected_return),
+                "monthly_investment": _round_for_output(projection_contribution),
+                "current_savings": _round_for_output(float(current_amount)),
+                "future_value_of_current_savings": _round_for_output(
+                    future_value_of_current_savings
+                ),
+                "total_planned_contributions": _round_for_output(
+                    projection_contribution * contribution_months
+                ),
+                "total_required_contributions": _round_for_output(
+                    required_investment * contribution_months
+                ),
                 "projected_corpus": _round_for_output(projected_corpus),
                 "gap_vs_target": _round_for_output(gap),
                 "required_monthly_investment": _round_for_output(
                     required_investment
                 ),
+                "additional_monthly_investment_needed": _round_for_output(
+                    max(required_investment - projection_contribution, 0)
+                ),
                 "risk_level": spec.risk_level,
+                "is_goal_achievable": projected_corpus >= float(target_amount),
             }
         )
 

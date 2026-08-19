@@ -16,9 +16,12 @@ export const STEPS = [
   { key: 'chatbot', label: 'Chat' },
 ]
 
-const STORAGE_KEY_PREFIX = 'finance-advisor-state-v2-user-'
+// Increment when persisted calculation semantics change so old generated plans
+// are not silently displayed after a deployment.
+const STORAGE_KEY_PREFIX = 'finance-advisor-state-v3-user-'
 
 const initialState = {
+  ownerUserId: null,
   step: 'profile',
   completedSteps: [],
   profile: { input: null, result: null },
@@ -38,16 +41,16 @@ function getStorageKey(userId) {
 }
 
 function loadInitialState(userId) {
-  if (!userId) return initialState
+  if (!userId) return { ...initialState }
   
   try {
     const storageKey = getStorageKey(userId)
     const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return initialState
+    if (!raw) return { ...initialState, ownerUserId: userId }
     const parsed = JSON.parse(raw)
-    return { ...initialState, ...parsed }
+    return { ...initialState, ...parsed, ownerUserId: userId }
   } catch {
-    return initialState
+    return { ...initialState, ownerUserId: userId }
   }
 }
 
@@ -66,6 +69,8 @@ export function clearUserState(userId) {
 export function clearLegacyState() {
   try {
     window.localStorage.removeItem('finance-advisor-state-v1')
+    window.localStorage.removeItem('finance-advisor-state-v2')
+    window.localStorage.removeItem('finance-advisor-state-v3')
   } catch {
     // Ignore
   }
@@ -73,6 +78,8 @@ export function clearLegacyState() {
 
 function reducer(state, action) {
   switch (action.type) {
+    case 'HYDRATE':
+      return action.state
     case 'GO_TO_STEP':
       return { ...state, step: action.step }
     case 'COMPLETE_STEP': {
@@ -80,15 +87,47 @@ function reducer(state, action) {
       return { ...state, completedSteps: [...state.completedSteps, action.step] }
     }
     case 'SET_PROFILE':
-      return { ...state, profile: { input: action.input, result: action.result } }
+      return {
+        ...state,
+        profile: { input: action.input, result: action.result },
+        risk: { answers: {}, result: null },
+        goal: { input: null, result: null },
+        plans: [],
+        comparison: null,
+        selectedPlan: null,
+        viewingPlanName: null,
+        chat: { conversationId: null, messages: [], draft: '' },
+        completedSteps: state.completedSteps.filter((step) => step === 'profile'),
+      }
     case 'SET_RISK_ANSWERS':
       return { ...state, risk: { ...state.risk, answers: action.answers } }
     case 'SET_RISK_RESULT':
-      return { ...state, risk: { ...state.risk, result: action.result } }
+      return {
+        ...state,
+        risk: { ...state.risk, result: action.result },
+        goal: { input: null, result: null },
+        plans: [],
+        comparison: null,
+        selectedPlan: null,
+        viewingPlanName: null,
+        chat: { conversationId: null, messages: [], draft: '' },
+        completedSteps: state.completedSteps.filter(
+          (step) => step === 'profile' || (action.result && step === 'risk'),
+        ),
+      }
     case 'SET_GOAL':
-      return { ...state, goal: { input: action.input, result: action.result } }
+      return {
+        ...state,
+        goal: { input: action.input, result: action.result },
+        plans: [],
+        comparison: null,
+        selectedPlan: null,
+        viewingPlanName: null,
+        chat: { conversationId: null, messages: [], draft: '' },
+        completedSteps: state.completedSteps.filter((step) => ['profile', 'risk', 'goal'].includes(step)),
+      }
     case 'SET_PLANS':
-      return { ...state, plans: action.plans }
+      return { ...state, plans: action.plans, comparison: null, selectedPlan: null, viewingPlanName: null }
     case 'SET_COMPARISON':
       return { ...state, comparison: action.comparison }
     case 'SET_SELECTED_PLAN':
@@ -104,7 +143,11 @@ function reducer(state, action) {
     case 'SET_CHAT_DRAFT':
       return { ...state, chat: { ...state.chat, draft: action.draft } }
     case 'RESET':
-      return initialState
+      return { ...initialState, ownerUserId: state.ownerUserId }
+    case 'SET_OWNER':
+      return { ...state, ownerUserId: action.userId }
+    case 'RESET_FOR_USER':
+      return { ...initialState, ownerUserId: action.userId }
     default:
       return state
   }
@@ -117,31 +160,7 @@ export function AppProvider({ children, userId }) {
 
   // Reset state when userId changes (user switched accounts)
   useEffect(() => {
-    const newState = loadInitialState(userId)
-    dispatch({ type: 'RESET' })
-    // Load the new user's state
-    Object.keys(newState).forEach(key => {
-      if (key === 'step') {
-        dispatch({ type: 'GO_TO_STEP', step: newState.step })
-      } else if (key === 'completedSteps') {
-        newState.completedSteps.forEach(step => {
-          dispatch({ type: 'COMPLETE_STEP', step })
-        })
-      } else if (key === 'profile') {
-        dispatch({ type: 'SET_PROFILE', input: newState.profile.input, result: newState.profile.result })
-      } else if (key === 'risk') {
-        dispatch({ type: 'SET_RISK_ANSWERS', answers: newState.risk.answers })
-        dispatch({ type: 'SET_RISK_RESULT', result: newState.risk.result })
-      } else if (key === 'goal') {
-        dispatch({ type: 'SET_GOAL', input: newState.goal.input, result: newState.goal.result })
-      } else if (key === 'plans') {
-        dispatch({ type: 'SET_PLANS', plans: newState.plans })
-      } else if (key === 'comparison') {
-        dispatch({ type: 'SET_COMPARISON', comparison: newState.comparison })
-      } else if (key === 'selectedPlan') {
-        dispatch({ type: 'SET_SELECTED_PLAN', plan: newState.selectedPlan })
-      }
-    })
+    dispatch({ type: 'HYDRATE', state: loadInitialState(userId) })
   }, [userId])
 
   useEffect(() => {

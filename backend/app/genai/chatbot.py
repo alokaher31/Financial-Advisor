@@ -102,23 +102,7 @@ def detect_whatif_intent(user_message: str) -> Optional[Dict[str, Any]]:
     elif any(word in message_lower for word in ["decrease", "less", "reduce", "lower", "cut"]):
         direction = "decrease"
     
-    # Try to extract numeric value
-    # Look for patterns like "₹50000", "50000", "50k", "50 thousand"
-    value = None
-    
-    # Match currency patterns: ₹50000 or 50000
-    currency_match = re.search(r'₹?\s*(\d{1,3}(?:,\d{3})*|\d+)(?:\s*(?:k|thousand|lakh|crore))?', user_message)
-    if currency_match:
-        value_str = currency_match.group(1).replace(',', '')
-        value = float(value_str)
-        
-        # Handle k, thousand, lakh, crore multipliers
-        if 'k' in message_lower or 'thousand' in message_lower:
-            value *= 1000
-        elif 'lakh' in message_lower:
-            value *= 100000
-        elif 'crore' in message_lower:
-            value *= 10000000
+    value = _extract_amount(user_message, detected_parameter)
     
     # Only return if we detected a parameter
     if detected_parameter:
@@ -126,8 +110,49 @@ def detect_whatif_intent(user_message: str) -> Optional[Dict[str, Any]]:
             "parameter": detected_parameter,
             "value": value,
             "direction": direction,
+            "is_delta": bool(
+                re.search(r"\b(?:by|more|extra|add(?:itional)?)\b", message_lower)
+            ),
         }
     
+    return None
+
+
+def _extract_amount(user_message: str, parameter: Optional[str]) -> Optional[float]:
+    """Extract one financial amount without applying multipliers from unrelated words."""
+
+    number = r"(?P<number>\d[\d,]*(?:\.\d+)?)"
+    multiplier = r"(?P<multiplier>k|thousand|lac|lakh|cr|crore)?"
+    patterns = [
+        rf"(?:₹|inr\s*|rs\.?\s*){number}\s*{multiplier}\b",
+        rf"{number}\s*(?P<required_multiplier>k|thousand|lac|lakh|cr|crore)\b",
+    ]
+    if parameter == "monthly_investment":
+        patterns.append(rf"(?:invest(?:ment)?|sav(?:e|ing|ings))\D{{0,20}}{number}\s*{multiplier}\b")
+    elif parameter:
+        keyword = re.escape(parameter.replace("_", " "))
+        patterns.append(rf"{keyword}\D{{0,20}}{number}\s*{multiplier}\b")
+    patterns.append(rf"{number}\s*{multiplier}\b")
+
+    for pattern in patterns:
+        match = re.search(pattern, user_message, flags=re.IGNORECASE)
+        if not match:
+            continue
+        value = float(match.group("number").replace(",", ""))
+        suffix = (
+            match.groupdict().get("required_multiplier")
+            or match.groupdict().get("multiplier")
+            or ""
+        ).lower()
+        factors = {
+            "k": 1_000,
+            "thousand": 1_000,
+            "lac": 100_000,
+            "lakh": 100_000,
+            "cr": 10_000_000,
+            "crore": 10_000_000,
+        }
+        return value * factors.get(suffix, 1)
     return None
 
 
@@ -232,6 +257,7 @@ def _handle_whatif_query(
     customer_profile_dict = {
         "monthly_income": profile["monthly_income"],
         "monthly_expenses": profile["monthly_expenses"],
+        "monthly_investment": active_plan["current_monthly_investment"],
     }
     
     goal_dict = {
@@ -244,7 +270,7 @@ def _handle_whatif_query(
     
     # Map detected parameter to what the analyzer expects
     parameter_mapping = {
-        "monthly_investment": "current_monthly_investment",
+        "monthly_investment": "monthly_investment",
         "monthly_expenses": "monthly_expenses",
         "monthly_income": "monthly_income",
         "time_horizon_years": "time_horizon_years",
@@ -255,6 +281,20 @@ def _handle_whatif_query(
         whatif_intent["parameter"],
         whatif_intent["parameter"]
     )
+    adjusted_value = whatif_intent["value"]
+    if whatif_intent.get("is_delta"):
+        current_values = {
+            "monthly_investment": active_plan["current_monthly_investment"],
+            "monthly_expenses": profile["monthly_expenses"],
+            "monthly_income": profile["monthly_income"],
+            "time_horizon_years": goal["time_horizon_years"],
+            "target_amount": goal["target_amount"],
+        }
+        current_value = current_values[whatif_intent["parameter"]]
+        if whatif_intent["direction"] == "decrease":
+            adjusted_value = max(current_value - adjusted_value, 0)
+        else:
+            adjusted_value = current_value + adjusted_value
     
     try:
         # Run what-if analysis with narration
@@ -264,7 +304,7 @@ def _handle_whatif_query(
             risk_category=risk_category,
             historical_data=historical_data,
             adjustment_parameter=adjustment_parameter,
-            adjusted_value=whatif_intent["value"],
+            adjusted_value=adjusted_value,
             plan_name=active_plan["plan_name"],
             temperature=temperature,
             max_tokens=max_tokens

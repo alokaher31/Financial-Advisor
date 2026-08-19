@@ -6,12 +6,19 @@ Loads settings from environment variables and provides centralized access.
 import os
 from pathlib import Path
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+    )
     
     # Application Settings
     APP_NAME: str = "Financial Advisor API"
@@ -63,12 +70,19 @@ class Settings(BaseSettings):
     LOW_RISK_MAX: int = 33
     MEDIUM_RISK_MAX: int = 66
     HIGH_RISK_MIN: int = 67
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
 
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def normalize_debug_value(cls, value):
+        """Accept common build-mode values from global DEBUG variables."""
+
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "production", "prod"}:
+                return False
+            if normalized in {"development", "dev", "debug"}:
+                return True
+        return value
 
 @lru_cache()
 def get_settings() -> Settings:

@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { useApp, STEPS } from './context/AppContext.jsx'
 import { useAuth } from './context/AuthContext.jsx'
 import ProgressStepper from './components/ProgressStepper.jsx'
 import { MockDataBanner } from './components/MockDataBanner.jsx'
+import LoadingScreen from './components/LoadingState.jsx'
 import ProfileForm from './pages/ProfileForm.jsx'
 import RiskQuestionnaire from './pages/RiskQuestionnaire.jsx'
 import GoalInput from './pages/GoalInput.jsx'
@@ -57,6 +59,15 @@ export default function App() {
   const ActivePage = STEP_COMPONENTS[enforcedStep] || ProfileForm
   const stepperCurrentKey = STEPPER_KEY_OVERRIDES[enforcedStep] || enforcedStep
 
+  useEffect(() => {
+    if (!user?.id) return
+    if (state.ownerUserId === null) {
+      dispatch({ type: 'SET_OWNER', userId: user.id })
+    } else if (String(state.ownerUserId) !== String(user.id)) {
+      dispatch({ type: 'RESET_FOR_USER', userId: user.id })
+    }
+  }, [dispatch, state.ownerUserId, user?.id])
+
   function handleStepClick(stepKey) {
     // Allow navigation only to completed steps or the next step
     const stepIndex = STEPS.findIndex(s => s.key === stepKey)
@@ -67,6 +78,11 @@ export default function App() {
     }
   }
 
+  function handleLogout() {
+    dispatch({ type: 'RESET' })
+    logout()
+  }
+
   if (!isAuthenticated) {
     return (
       <>
@@ -74,6 +90,10 @@ export default function App() {
         <AuthLanding />
       </>
     )
+  }
+
+  if (state.ownerUserId !== null && String(state.ownerUserId) !== String(user.id)) {
+    return <LoadingScreen />
   }
 
   return (
@@ -101,7 +121,7 @@ export default function App() {
             <button
               type="button"
               className="auth-btn-signout"
-              onClick={logout}
+              onClick={handleLogout}
             >
               Sign Out
             </button>

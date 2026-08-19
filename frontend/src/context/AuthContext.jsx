@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { clearUserState } from './AppContext.jsx'
 
 const AUTH_STORAGE_KEY = 'finance_advisor_token'
@@ -7,6 +7,20 @@ const USER_STORAGE_KEY = 'finance_advisor_user'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
 const AuthContext = createContext(null)
+
+function clearStoredAuth() {
+  window.localStorage.removeItem(AUTH_STORAGE_KEY)
+  window.localStorage.removeItem(USER_STORAGE_KEY)
+  window.sessionStorage.removeItem(AUTH_STORAGE_KEY)
+  window.sessionStorage.removeItem(USER_STORAGE_KEY)
+}
+
+function storeAuth(accessToken, authenticatedUser, persistent) {
+  clearStoredAuth()
+  const storage = persistent ? window.localStorage : window.sessionStorage
+  storage.setItem(AUTH_STORAGE_KEY, accessToken)
+  storage.setItem(USER_STORAGE_KEY, JSON.stringify(authenticatedUser))
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -18,8 +32,8 @@ export function AuthProvider({ children }) {
     // Check for existing token and user on mount
     const checkAuth = async () => {
       try {
-        const storedToken = window.localStorage.getItem(AUTH_STORAGE_KEY)
-        const storedUser = window.localStorage.getItem(USER_STORAGE_KEY)
+        const storedToken = window.localStorage.getItem(AUTH_STORAGE_KEY) || window.sessionStorage.getItem(AUTH_STORAGE_KEY)
+        const storedUser = window.localStorage.getItem(USER_STORAGE_KEY) || window.sessionStorage.getItem(USER_STORAGE_KEY)
         
         if (storedToken && storedUser) {
           setToken(storedToken)
@@ -35,14 +49,16 @@ export function AuthProvider({ children }) {
             
             if (!response.ok) {
               // Token invalid, clear storage
-              window.localStorage.removeItem(AUTH_STORAGE_KEY)
-              window.localStorage.removeItem(USER_STORAGE_KEY)
+              clearStoredAuth()
               setToken(null)
               setUser(null)
             } else {
               const userData = await response.json()
               setUser(userData)
-              window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData))
+              const storage = window.localStorage.getItem(AUTH_STORAGE_KEY)
+                ? window.localStorage
+                : window.sessionStorage
+              storage.setItem(USER_STORAGE_KEY, JSON.stringify(userData))
             }
           } catch (err) {
             console.error('Token verification failed:', err)
@@ -120,13 +136,10 @@ export function AuthProvider({ children }) {
       setToken(access_token)
       setUser(authenticatedUser)
 
-      if (rememberMe) {
-        try {
-          window.localStorage.setItem(AUTH_STORAGE_KEY, access_token)
-          window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(authenticatedUser))
-        } catch (err) {
-          console.error('Failed to save to localStorage:', err)
-        }
+      try {
+        storeAuth(access_token, authenticatedUser, rememberMe)
+      } catch (err) {
+        console.error('Failed to save authentication state:', err)
       }
 
       setIsLoading(false)
@@ -222,8 +235,7 @@ export function AuthProvider({ children }) {
       setUser(registeredUser)
 
       try {
-        window.localStorage.setItem(AUTH_STORAGE_KEY, access_token)
-        window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(registeredUser))
+        storeAuth(access_token, registeredUser, true)
       } catch (err) {
         console.error('Failed to save to localStorage:', err)
       }
@@ -255,8 +267,7 @@ export function AuthProvider({ children }) {
     setUser(demoUser)
     setToken('demo_token') // Demo token for demo mode
     try {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, 'demo_token')
-      window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(demoUser))
+      storeAuth('demo_token', demoUser, true)
     } catch {
       // Ignore
     }
@@ -264,28 +275,27 @@ export function AuthProvider({ children }) {
     return { success: true, user: demoUser }
   }
 
-  function logout() {
-    const currentUserId = user?.id
-    setUser(null)
+  const logout = useCallback(() => {
+    setUser((currentUser) => {
+      if (currentUser?.id) {
+        clearUserState(currentUser.id)
+      }
+      return null
+    })
     setToken(null)
     setError(null)
     try {
-      window.localStorage.removeItem(AUTH_STORAGE_KEY)
-      window.localStorage.removeItem(USER_STORAGE_KEY)
-      
-      // Clear app state for this user
-      if (currentUserId) {
-        clearUserState(currentUserId)
-      }
+      clearStoredAuth()
     } catch {
       // Ignore
     }
-  }
+  }, [])
 
-  // Helper function to get current token
-  function getToken() {
-    return token
-  }
+  useEffect(() => {
+    const handleUnauthorized = () => logout()
+    window.addEventListener('finance-advisor:unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('finance-advisor:unauthorized', handleUnauthorized)
+  }, [logout])
 
   const value = useMemo(
     () => ({
@@ -299,9 +309,8 @@ export function AuthProvider({ children }) {
       loginAsDemo,
       logout,
       clearError,
-      getToken,
     }),
-    [user, token, isLoading, error],
+    [user, token, isLoading, error, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

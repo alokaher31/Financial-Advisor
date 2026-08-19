@@ -145,6 +145,7 @@ def delete_customer_profile(
 @router.get("/{customer_id}/summary", response_model=FinancialSummary)
 def get_financial_summary(
     customer_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -157,6 +158,7 @@ def get_financial_summary(
     - Annual savings capacity
     - Financial health score
     """
+    require_customer_ownership(current_user.id, customer_id, db)
     db_profile = crud.get_customer_profile(db, customer_id)
     if not db_profile:
         raise HTTPException(

@@ -17,6 +17,7 @@ from app.models import (
 )
 from app.core.risk_scoring import RISK_QUESTIONNAIRE as RISK_QUESTIONS
 from app.utils.logger import logger
+from app.utils.security import get_current_user, require_customer_ownership
 
 router = APIRouter(prefix="/risk", tags=["Risk Assessment"])
 
@@ -55,6 +56,7 @@ def get_risk_questionnaire():
 @router.post("/", response_model=RiskAssessment, status_code=status.HTTP_201_CREATED)
 def create_risk_assessment(
     assessment: RiskAssessmentCreate,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -65,13 +67,7 @@ def create_risk_assessment(
     - Risk category (Conservative/Moderate/Aggressive)
     """
     try:
-        # Verify customer exists
-        customer = crud.get_customer_profile(db, assessment.customer_id)
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Customer with ID {assessment.customer_id} not found"
-            )
+        require_customer_ownership(current_user.id, assessment.customer_id, db)
         
         logger.info(f"Creating risk assessment for customer: {assessment.customer_id}")
         db_assessment = crud.create_risk_assessment(db, assessment)
@@ -93,6 +89,7 @@ def create_risk_assessment(
 @router.get("/{assessment_id}", response_model=RiskAssessment)
 def get_risk_assessment(
     assessment_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a risk assessment by ID."""
@@ -102,6 +99,7 @@ def get_risk_assessment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Risk assessment with ID {assessment_id} not found"
         )
+    require_customer_ownership(current_user.id, db_assessment.customer_id, db)
     return db_assessment
 
 
@@ -110,16 +108,11 @@ def get_customer_risk_assessments(
     customer_id: int,
     skip: int = 0,
     limit: int = 100,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all risk assessments for a specific customer."""
-    # Verify customer exists
-    customer = crud.get_customer_profile(db, customer_id)
-    if not customer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Customer with ID {customer_id} not found"
-        )
+    require_customer_ownership(current_user.id, customer_id, db)
     
     assessments = crud.get_customer_risk_assessments(db, customer_id, skip, limit)
     return assessments
@@ -128,9 +121,11 @@ def get_customer_risk_assessments(
 @router.get("/customer/{customer_id}/latest", response_model=RiskAssessment)
 def get_latest_risk_assessment(
     customer_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get the most recent risk assessment for a customer."""
+    require_customer_ownership(current_user.id, customer_id, db)
     assessment = crud.get_latest_risk_assessment(db, customer_id)
     if not assessment:
         raise HTTPException(
@@ -143,6 +138,7 @@ def get_latest_risk_assessment(
 @router.get("/customer/{customer_id}/profile", response_model=RiskProfile)
 def get_risk_profile(
     customer_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -153,6 +149,7 @@ def get_risk_profile(
     - Risk tolerance description
     - Investment recommendations
     """
+    require_customer_ownership(current_user.id, customer_id, db)
     assessment = crud.get_latest_risk_assessment(db, customer_id)
     if not assessment:
         raise HTTPException(
@@ -214,9 +211,17 @@ def get_risk_profile(
 @router.delete("/{assessment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_risk_assessment(
     assessment_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a risk assessment."""
+    assessment = crud.get_risk_assessment(db, assessment_id)
+    if not assessment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Risk assessment with ID {assessment_id} not found",
+        )
+    require_customer_ownership(current_user.id, assessment.customer_id, db)
     success = crud.delete_risk_assessment(db, assessment_id)
     if not success:
         raise HTTPException(

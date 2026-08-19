@@ -5,7 +5,7 @@ Financial Goal Pydantic models for request/response validation.
 from datetime import datetime
 from typing import Optional
 from enum import Enum
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class GoalType(str, Enum):
@@ -65,6 +65,8 @@ class GoalUpdate(BaseModel):
 
 class Goal(GoalBase):
     """Model for goal response with database fields."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     customer_id: int
     required_monthly_saving: float = Field(..., description="Calculated monthly saving required")
@@ -72,10 +74,6 @@ class Goal(GoalBase):
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
-
-
 class GoalCalculation(BaseModel):
     """Detailed calculation results for a financial goal."""
     goal_id: int

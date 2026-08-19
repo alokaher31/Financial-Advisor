@@ -100,6 +100,26 @@ class TestCustomerProfileAPI:
         assert "monthly_surplus" in data
         assert "financial_health_score" in data
 
+    def test_another_user_cannot_access_profile(self, client, sample_customer_data):
+        owner_token = client.headers["Authorization"]
+        created = client.post("/api/v1/profile/", json=sample_customer_data)
+        customer_id = created.json()["id"]
+
+        other = client.post(
+            "/api/v1/auth/register",
+            json={
+                "name": "Other User",
+                "email": "other@example.com",
+                "password": "otherpass123",
+            },
+        )
+        client.headers["Authorization"] = f"Bearer {other.json()['access_token']}"
+        try:
+            response = client.get(f"/api/v1/profile/{customer_id}")
+            assert response.status_code == status.HTTP_403_FORBIDDEN
+        finally:
+            client.headers["Authorization"] = owner_token
+
 
 class TestRiskAssessmentAPI:
     """Test risk assessment endpoints."""
@@ -160,12 +180,15 @@ class TestCompleteFlow:
         # 4. Generate financial plans
         plan_request = {
             "customer_id": customer_id,
-            "goal_ids": [goal_id]
+            "goal_ids": [goal_id],
+            "custom_parameters": {"monthly_investment": 1_000},
         }
         plans_response = client.post("/api/v1/plans/generate", json=plan_request)
         assert plans_response.status_code == status.HTTP_200_OK
         plans = plans_response.json()
         assert len(plans) == 3
+        assert all(plan["monthly_investment"] == 1_000 for plan in plans)
+        assert all(plan["total_planned_contributions"] == 300_000 for plan in plans)
         
         # Verify complete flow
         assert customer_id > 0

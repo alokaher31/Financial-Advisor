@@ -20,6 +20,8 @@ from app.models import (
     ChatSession,
 )
 from app.utils.logger import logger
+from app.utils.security import get_current_user, require_customer_ownership
+from app.genai.rag_service import get_rag_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
@@ -35,6 +37,7 @@ except ImportError:
 @router.post("/", response_model=ChatResponse)
 def chat(
     request: ChatRequest,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -44,27 +47,13 @@ def chat(
     Maintains conversation history per session.
     """
     try:
-        # Verify customer exists
-        customer = crud.get_customer_profile(db, request.customer_id)
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Customer with ID {request.customer_id} not found"
-            )
+        require_customer_ownership(current_user.id, request.customer_id, db)
         
         # Generate session ID if not provided
         session_id = request.session_id or str(uuid.uuid4())
         
-        # Save user message
-        user_message = ChatMessageCreate(
-            customer_id=request.customer_id,
-            role=MessageRole.USER,
-            content=request.message,
-            session_id=session_id,
-        )
-        crud.create_chat_message(db, user_message)
-        
-        # Get conversation history if requested
+        # Fetch prior history before storing the current message so it is not
+        # sent to the model twice (once in history and once as the new prompt).
         context_messages = []
         if request.include_context and request.max_history_messages > 0:
             recent_messages = crud.get_recent_chat_messages(
@@ -74,6 +63,14 @@ def chat(
                 limit=request.max_history_messages
             )
             context_messages = list(reversed(recent_messages))
+
+        user_message = ChatMessageCreate(
+            customer_id=request.customer_id,
+            role=MessageRole.USER,
+            content=request.message,
+            session_id=session_id,
+        )
+        crud.create_chat_message(db, user_message)
         
         # Call real chatbot with Groq LLM
         from app.genai.chatbot import get_chatbot_response
@@ -134,6 +131,7 @@ def chat(
 @router.post("/history", response_model=List[ChatMessage])
 def get_chat_history(
     request: ChatHistoryRequest,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -141,13 +139,7 @@ def get_chat_history(
     
     Can filter by session_id or get all conversations.
     """
-    # Verify customer exists
-    customer = crud.get_customer_profile(db, request.customer_id)
-    if not customer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Customer with ID {request.customer_id} not found"
-        )
+    require_customer_ownership(current_user.id, request.customer_id, db)
     
     messages = crud.get_chat_history(
         db,
@@ -163,16 +155,11 @@ def get_chat_history(
 @router.get("/sessions/{customer_id}", response_model=List[str])
 def get_customer_sessions(
     customer_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all chat session IDs for a customer."""
-    # Verify customer exists
-    customer = crud.get_customer_profile(db, customer_id)
-    if not customer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Customer with ID {customer_id} not found"
-        )
+    require_customer_ownership(current_user.id, customer_id, db)
     
     sessions = crud.get_customer_sessions(db, customer_id)
     return sessions
@@ -182,9 +169,11 @@ def get_customer_sessions(
 def delete_chat_session(
     customer_id: int,
     session_id: str,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete all messages in a chat session."""
+    require_customer_ownership(current_user.id, customer_id, db)
     success = crud.delete_chat_session(db, customer_id, session_id)
     if not success:
         raise HTTPException(
@@ -196,7 +185,9 @@ def delete_chat_session(
 
 
 @router.get("/rag/stats", status_code=status.HTTP_200_OK)
-def get_rag_stats():
+def get_rag_stats(
+    current_user = Depends(get_current_user),
+):
     """
     Get RAG system statistics (knowledge base status).
     
@@ -222,7 +213,9 @@ def get_rag_stats():
 
 
 @router.post("/rag/reinitialize", status_code=status.HTTP_200_OK)
-def reinitialize_rag():
+def reinitialize_rag(
+    current_user = Depends(get_current_user),
+):
     """
     Reinitialize RAG system and reindex knowledge base.
     
@@ -240,7 +233,7 @@ def reinitialize_rag():
     try:
         from app.genai.rag_service import initialize_rag
         result = initialize_rag()
-        logger.info(f"RAG reinitialized: {result}")
+        logger.info(f"RAG reinitialized by user {current_user.id}: {result}")
         return result
     except Exception as e:
         logger.error(f"Error reinitializing RAG: {e}")

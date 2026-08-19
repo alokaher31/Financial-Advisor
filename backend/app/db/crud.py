@@ -12,8 +12,8 @@ from app.db.db_models import (
     RiskAssessmentDB, ChatMessageDB
 )
 from app.models import (
-    CustomerProfileCreate, CustomerProfileUpdate,
-    GoalCreate, GoalUpdate,
+    CustomerProfileBase, CustomerProfileCreate, CustomerProfileUpdate,
+    GoalBase, GoalCreate, GoalUpdate,
     PlanCreate, PlanUpdate,
     RiskAssessmentCreate,
     ChatMessageCreate,
@@ -24,7 +24,7 @@ from app.core.net_worth_calculator import (
     calculate_debt_to_income_ratio,
     calculate_savings_rate,
 )
-from app.core.goal_calculator import calculate_future_value
+from app.core.goal_calculator import calculate_required_monthly_investment
 from app.core.risk_scoring import calculate_risk_score, classify_risk
 
 
@@ -244,7 +244,16 @@ def update_customer_profile(
         return None
 
     update_data = profile_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
+    candidate = CustomerProfileBase.model_validate({
+        "name": update_data.get("name", db_profile.name),
+        "age": update_data.get("age", db_profile.age),
+        "occupation": update_data.get("occupation", db_profile.occupation),
+        "monthly_income": update_data.get("monthly_income", db_profile.monthly_income),
+        "monthly_expenses": update_data.get("monthly_expenses", db_profile.monthly_expenses),
+        "total_assets": update_data.get("total_assets", db_profile.total_assets),
+        "total_liabilities": update_data.get("total_liabilities", db_profile.total_liabilities),
+    })
+    for field, value in candidate.model_dump().items():
         setattr(db_profile, field, value)
 
     # Recalculate financial metrics
@@ -259,6 +268,10 @@ def update_customer_profile(
     db_profile.debt_to_income_ratio = calculate_debt_to_income_ratio(
         db_profile.total_liabilities,
         db_profile.monthly_income
+    )
+    db_profile.savings_rate = calculate_savings_rate(
+        db_profile.monthly_surplus,
+        db_profile.monthly_income,
     )
 
     db.commit()
@@ -293,15 +306,12 @@ def create_goal(db: Session, goal: GoalCreate, return_rate: float = 0.06) -> Goa
     Returns:
         Created goal with calculated fields
     """
-    amount_needed = goal.target_amount - goal.current_savings
-    months = goal.time_horizon_years * 12
-    monthly_rate = return_rate / 12
-
-    if monthly_rate > 0:
-        fv_factor = (pow(1 + monthly_rate, months) - 1) / monthly_rate
-        required_monthly = amount_needed / fv_factor if fv_factor > 0 else amount_needed / months
-    else:
-        required_monthly = amount_needed / months if months > 0 else 0
+    required_monthly = calculate_required_monthly_investment(
+        goal.target_amount,
+        goal.current_savings,
+        return_rate * 100,
+        goal.time_horizon_years,
+    )
 
     customer = get_customer_profile(db, goal.customer_id)
     is_achievable = False
@@ -346,30 +356,37 @@ def get_customer_goals(
         .all()
 
 
-def update_goal(db: Session, goal_id: int, goal_update: GoalUpdate) -> Optional[GoalDB]:
+def update_goal(
+    db: Session,
+    goal_id: int,
+    goal_update: GoalUpdate,
+    return_rate: float = 0.06,
+) -> Optional[GoalDB]:
     """Update a goal and recalculate required savings."""
     db_goal = get_goal(db, goal_id)
     if not db_goal:
         return None
 
     update_data = goal_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        if hasattr(value, 'value'):  # Handle enum values
-            setattr(db_goal, field, value.value)
-        else:
-            setattr(db_goal, field, value)
+    candidate = GoalBase.model_validate({
+        "goal_type": update_data.get("goal_type", db_goal.goal_type),
+        "goal_name": update_data.get("goal_name", db_goal.goal_name),
+        "target_amount": update_data.get("target_amount", db_goal.target_amount),
+        "current_savings": update_data.get("current_savings", db_goal.current_savings),
+        "time_horizon_years": update_data.get("time_horizon_years", db_goal.time_horizon_years),
+        "priority": update_data.get("priority", db_goal.priority),
+        "notes": update_data.get("notes", db_goal.notes),
+    })
+    for field, value in candidate.model_dump().items():
+        setattr(db_goal, field, value.value if hasattr(value, "value") else value)
 
     # Recalculate required monthly saving
-    amount_needed = db_goal.target_amount - db_goal.current_savings
-    months = db_goal.time_horizon_years * 12
-    return_rate = 0.06
-    monthly_rate = return_rate / 12
-
-    if monthly_rate > 0:
-        fv_factor = (pow(1 + monthly_rate, months) - 1) / monthly_rate
-        required_monthly = amount_needed / fv_factor if fv_factor > 0 else amount_needed / months
-    else:
-        required_monthly = amount_needed / months if months > 0 else 0
+    required_monthly = calculate_required_monthly_investment(
+        db_goal.target_amount,
+        db_goal.current_savings,
+        return_rate * 100,
+        db_goal.time_horizon_years,
+    )
 
     db_goal.required_monthly_saving = round(required_monthly, 2)
 

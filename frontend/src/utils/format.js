@@ -20,6 +20,16 @@ export function formatCurrency(value) {
   return INR_FORMATTER.format(num)
 }
 
+export function formatIndianAmount(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '—'
+  const absolute = Math.abs(num)
+  const sign = num < 0 ? '-' : ''
+  if (absolute >= 10_000_000) return `${sign}₹${(absolute / 10_000_000).toLocaleString('en-IN', { maximumFractionDigits: 2 })} crore`
+  if (absolute >= 100_000) return `${sign}₹${(absolute / 100_000).toLocaleString('en-IN', { maximumFractionDigits: 2 })} lakh`
+  return formatCurrency(num)
+}
+
 export function formatNumber(value) {
   const num = Number(value)
   if (!Number.isFinite(num)) return '—'
