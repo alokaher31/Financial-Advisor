@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
 import { saveProfile } from '../api/apiClient.js'
 import { useAsyncAction } from '../hooks/useAsyncAction.js'
@@ -7,6 +7,7 @@ import ErrorState from '../components/ErrorState.jsx'
 import DisclaimerBanner from '../components/DisclaimerBanner.jsx'
 import { formatCurrency, formatPercent } from '../utils/format.js'
 import { validateRequiredNumber, validateOptionalNonNegativeNumber, hasErrors } from '../utils/validation.js'
+import { calculateLiveProfileSummary, hasFinancialValues } from '../utils/profileSummary.js'
 
 const ASSET_FIELDS = [
   { key: 'equity', label: 'Equity / Investments' },
@@ -110,7 +111,8 @@ export default function ProfileForm() {
     dispatch({ type: 'GO_TO_STEP', step: 'risk' })
   }
 
-  const summary = state.profile.result
+  const summary = useMemo(() => calculateLiveProfileSummary(form), [form])
+  const showSummary = Boolean(state.profile.result) || hasFinancialValues(form)
 
   return (
     <div>
@@ -215,7 +217,7 @@ export default function ProfileForm() {
 
         {error && <ErrorState title="Couldn't save your profile" error={error} />}
 
-        {summary && (
+        {showSummary && (
           <div className="card mt-4">
             <h3 className="mb-4">Financial Summary</h3>
             <div className="card-grid">
