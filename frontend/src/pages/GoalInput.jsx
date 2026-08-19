@@ -181,7 +181,15 @@ export default function GoalInput() {
 
         {submitError && <ErrorState title="Couldn't generate your plans" error={submitError} />}
 
-        <div className="page-actions page-actions--end">
+        <div className="page-actions page-actions--between">
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'risk' })}
+            disabled={loading}
+          >
+            Back to Risk Assessment
+          </button>
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {phase === 'saving-goal' && (
               <>

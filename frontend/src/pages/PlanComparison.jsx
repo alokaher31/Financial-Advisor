@@ -105,7 +105,14 @@ export default function PlanComparison() {
       </div>
 
       {state.selectedPlan && (
-        <div className="page-actions page-actions--end">
+        <div className="page-actions page-actions--between">
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'goal' })}
+          >
+            Back to Goal
+          </button>
           <button type="button" className="btn btn-primary" onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'chatbot' })}>
             Continue with {state.selectedPlan.planName} Plan
           </button>

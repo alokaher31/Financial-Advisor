@@ -39,8 +39,13 @@ export default function RiskQuestionnaire() {
   }
 
   function goBack() {
-    if (index === 0) return
-    setIndex((i) => i - 1)
+    if (index === 0) {
+      // Go back to Profile page when on first question
+      dispatch({ type: 'GO_TO_STEP', step: 'profile' })
+    } else {
+      // Go back to previous question
+      setIndex((i) => i - 1)
+    }
   }
 
   async function handleSubmit() {
@@ -145,8 +150,8 @@ export default function RiskQuestionnaire() {
       {error && <ErrorState title="Couldn't submit your risk assessment" error={error} onRetry={handleSubmit} />}
 
       <div className="page-actions page-actions--between">
-        <button type="button" className="btn btn-secondary" onClick={goBack} disabled={index === 0 || loading}>
-          Back
+        <button type="button" className="btn btn-secondary" onClick={goBack} disabled={loading}>
+          {index === 0 ? 'Back to Profile' : 'Back'}
         </button>
         <button type="button" className="btn btn-primary" onClick={goNext} disabled={loading}>
           {loading ? (
