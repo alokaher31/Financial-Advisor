@@ -4,6 +4,7 @@ API routes for financial goal management.
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -123,12 +124,22 @@ def update_goal(
         if goal_update.goal_type is not None
         else existing_goal.goal_type
     )
-    db_goal = crud.update_goal(
-        db,
-        goal_id,
-        goal_update,
-        return_rate=_goal_return_rate(goal_type),
-    )
+    try:
+        db_goal = crud.update_goal(
+            db,
+            goal_id,
+            goal_update,
+            return_rate=_goal_return_rate(goal_type),
+        )
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=exc.errors(
+                include_url=False,
+                include_context=False,
+                include_input=False,
+            ),
+        ) from exc
     if not db_goal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

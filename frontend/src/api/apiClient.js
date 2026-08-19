@@ -20,15 +20,18 @@ import {
   MOCK_WHATIF_RESULT,
   mockDelay,
 } from '../mock/mockData.js';
+import { formatErrorMessage } from '../utils/errorMessage.js';
+
+const VITE_ENV = import.meta.env ?? {};
 
 const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+  VITE_ENV.VITE_API_BASE_URL || 'http://localhost:8000'
 ).replace(/\/+$/, '');
 
 // Real calculations are the safe default. Mock mode must be explicitly enabled
 // because mock responses do not reflect any values entered by the user.
 const USE_MOCK_DATA =
-  String(import.meta.env.VITE_USE_MOCK_DATA ?? 'false').toLowerCase() ===
+  String(VITE_ENV.VITE_USE_MOCK_DATA ?? 'false').toLowerCase() ===
   'true';
 
 // Warn if running on mock data
@@ -98,9 +101,10 @@ async function request(path, { method = 'GET', body } = {}) {
       throw new ApiError(message, { status: response.status, details: payload });
     }
     
-    const message =
-      (payload && (payload.message || payload.detail || payload.error)) ||
-      `Request failed with status ${response.status}`;
+    const message = formatErrorMessage(
+      payload,
+      `Request failed with status ${response.status}`,
+    );
     throw new ApiError(message, { status: response.status, details: payload });
   }
 
@@ -273,6 +277,46 @@ export async function createProfile(profileInput) {
   return normalizeProfileResponse(data);
 }
 
+/** Update an existing profile while preserving its database identity. */
+export async function updateProfile(profileId, profileInput) {
+  if (!profileId) return createProfile(profileInput);
+  if (USE_MOCK_DATA) {
+    await mockDelay();
+    return normalizeProfileResponse({
+      ...MOCK_PROFILE_RESPONSE,
+      ...profileInput,
+      id: profileId,
+    });
+  }
+
+  const backendPayload = {
+    name: profileInput.name || 'Customer',
+    age: profileInput.age,
+    occupation: profileInput.occupation || 'Professional',
+    monthly_income: profileInput.monthly_income,
+    monthly_expenses: profileInput.monthly_expenses,
+    total_assets: typeof profileInput.assets === 'object'
+      ? sumValues(profileInput.assets)
+      : (profileInput.total_assets || profileInput.assets || 0),
+    total_liabilities: typeof profileInput.liabilities === 'object'
+      ? sumValues(profileInput.liabilities)
+      : (profileInput.total_liabilities || profileInput.liabilities || 0),
+  };
+
+  const data = await request(`/profile/${profileId}`, {
+    method: 'PUT',
+    body: backendPayload,
+  });
+  return normalizeProfileResponse(data);
+}
+
+/** Create on first submission and update when navigating back to Profile. */
+export function saveProfile({ profileId, profileInput }) {
+  return profileId
+    ? updateProfile(profileId, profileInput)
+    : createProfile(profileInput);
+}
+
 /**
  * POST /api/v1/risk
  * Maps: profile_id → customer_id, path /risk-assessment → /risk
@@ -318,6 +362,35 @@ export async function createGoal(goalInput) {
 
   const data = await request('/goal', { method: 'POST', body: backendPayload });
   return normalizeGoalResponse(data);
+}
+
+/** Update an existing goal rather than creating duplicates after navigation. */
+export async function updateGoal(goalId, goalInput) {
+  if (!goalId) return createGoal(goalInput);
+  if (USE_MOCK_DATA) {
+    await mockDelay();
+    return normalizeGoalResponse({ ...MOCK_GOAL_RESPONSE, ...goalInput, id: goalId });
+  }
+
+  const goalTypeEnum = GOAL_TYPE_MAP[goalInput.goal_type] || goalInput.goal_type?.toLowerCase() || 'other';
+  const priorityEnum = PRIORITY_MAP[goalInput.priority] || goalInput.priority?.toLowerCase() || 'medium';
+  const data = await request(`/goal/${goalId}`, {
+    method: 'PUT',
+    body: {
+      goal_type: goalTypeEnum,
+      goal_name: `${goalInput.goal_type} Fund`,
+      target_amount: goalInput.target_amount,
+      current_savings: goalInput.current_amount ?? goalInput.current_savings ?? 0,
+      time_horizon_years: goalInput.time_horizon_years,
+      priority: priorityEnum,
+    },
+  });
+  return normalizeGoalResponse(data);
+}
+
+/** Create on first submission and update when navigating back to Goal. */
+export function saveGoal({ goalId, goalInput }) {
+  return goalId ? updateGoal(goalId, goalInput) : createGoal(goalInput);
 }
 
 /**

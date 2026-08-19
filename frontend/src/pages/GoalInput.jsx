@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import { createGoal, generatePlans } from '../api/apiClient.js'
+import { saveGoal, generatePlans } from '../api/apiClient.js'
 import FormField from '../components/ui/FormField.jsx'
 import ErrorState from '../components/ErrorState.jsx'
 import { formatCurrency, formatIndianAmount } from '../utils/format.js'
@@ -69,8 +69,16 @@ export default function GoalInput() {
     }
 
     try {
+      const existingGoalId = state.goal.result?.goalId
+      const isUnchanged = existingGoalId &&
+        JSON.stringify(payload) === JSON.stringify(state.goal.input)
+      if (isUnchanged && state.plans.length > 0) {
+        dispatch({ type: 'GO_TO_STEP', step: 'plans' })
+        return
+      }
+
       setPhase('saving-goal')
-      const goalResult = await createGoal(payload)
+      const goalResult = await saveGoal({ goalId: existingGoalId, goalInput: payload })
       dispatch({ type: 'SET_GOAL', input: payload, result: goalResult })
 
       setPhase('generating-plans')

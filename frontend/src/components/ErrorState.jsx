@@ -1,3 +1,5 @@
+import { formatErrorMessage } from '../utils/errorMessage.js'
+
 /**
  * Standard failure state for any API-driven view, with an optional retry
  * action. `error` may be an Error instance, a string, or null/undefined.
@@ -7,9 +9,7 @@ export default function ErrorState({
   error,
   onRetry,
 }) {
-  const message =
-    (error && (error.message || String(error))) ||
-    'Please check your connection and try again.'
+  const message = formatErrorMessage(error)
 
   return (
     <div className="alert alert-error" role="alert">
