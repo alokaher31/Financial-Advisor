@@ -64,6 +64,33 @@ class TestCustomerProfileAPI:
         data = response.json()
         assert data["id"] == customer_id
         assert data["name"] == sample_customer_data["name"]
+
+    def test_update_customer_profile_reuses_id_and_recalculates(self, client, sample_customer_data):
+        created = client.post("/api/v1/profile/", json=sample_customer_data)
+        customer_id = created.json()["id"]
+
+        update = {**sample_customer_data, "monthly_income": 200000.0}
+        response = client.put(f"/api/v1/profile/{customer_id}", json=update)
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["id"] == customer_id
+        assert data["monthly_income"] == 200000.0
+        assert data["monthly_surplus"] == 120000.0
+        profiles = client.get("/api/v1/profile/").json()
+        assert [profile["id"] for profile in profiles] == [customer_id]
+
+    def test_update_customer_profile_returns_validation_details(self, client, sample_customer_data):
+        created = client.post("/api/v1/profile/", json=sample_customer_data)
+        customer_id = created.json()["id"]
+
+        response = client.put(
+            f"/api/v1/profile/{customer_id}",
+            json={"monthly_income": 0, "total_liabilities": 500000},
+        )
+
+        assert response.status_code == 422
+        assert isinstance(response.json()["error"], list)
     
     def test_get_nonexistent_profile(self, client):
         """Test getting a profile that doesn't exist."""
@@ -151,6 +178,42 @@ class TestRiskAssessmentAPI:
         assert data["customer_id"] == customer_id
         assert "risk_score" in data
         assert data["risk_category"] in ["Conservative", "Moderate", "Aggressive"]
+
+
+class TestGoalAPI:
+    def test_update_goal_reuses_id_and_recalculates(self, client, sample_customer_data, sample_goal_data):
+        customer = client.post("/api/v1/profile/", json=sample_customer_data).json()
+        created = client.post(
+            "/api/v1/goal/",
+            json={**sample_goal_data, "customer_id": customer["id"]},
+        )
+        goal_id = created.json()["id"]
+
+        response = client.put(
+            f"/api/v1/goal/{goal_id}",
+            json={"target_amount": 25000000.0},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["id"] == goal_id
+        assert response.json()["target_amount"] == 25000000.0
+        goals = client.get(f"/api/v1/goal/customer/{customer['id']}").json()
+        assert [goal["id"] for goal in goals] == [goal_id]
+
+    def test_update_goal_validates_merged_values(self, client, sample_customer_data, sample_goal_data):
+        customer = client.post("/api/v1/profile/", json=sample_customer_data).json()
+        created = client.post(
+            "/api/v1/goal/",
+            json={**sample_goal_data, "customer_id": customer["id"]},
+        )
+
+        response = client.put(
+            f"/api/v1/goal/{created.json()['id']}",
+            json={"target_amount": 1000000.0},
+        )
+
+        assert response.status_code == 422
+        assert isinstance(response.json()["error"], list)
 
 
 class TestCompleteFlow:

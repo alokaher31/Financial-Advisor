@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext.jsx'
-import { createProfile } from '../api/apiClient.js'
+import { saveProfile } from '../api/apiClient.js'
 import { useAsyncAction } from '../hooks/useAsyncAction.js'
 import FormField from '../components/ui/FormField.jsx'
 import ErrorState from '../components/ErrorState.jsx'
@@ -48,7 +48,7 @@ export default function ProfileForm() {
   const { state, dispatch } = useApp()
   const [form, setForm] = useState(() => initialFormState(state.profile.input))
   const [errors, setErrors] = useState({})
-  const { run: submitProfile, loading, error } = useAsyncAction(createProfile)
+  const { run: submitProfile, loading, error } = useAsyncAction(saveProfile)
 
   function updateField(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -91,7 +91,19 @@ export default function ProfileForm() {
       liabilities: Object.fromEntries(LIABILITY_FIELDS.map(({ key }) => [key, toNum(form.liabilities[key])])),
     }
 
-    const result = await submitProfile(payload)
+    const existingProfileId = state.profile.result?.profileId
+    const isUnchanged = existingProfileId &&
+      JSON.stringify(payload) === JSON.stringify(state.profile.input)
+    if (isUnchanged) {
+      dispatch({ type: 'COMPLETE_STEP', step: 'profile' })
+      dispatch({ type: 'GO_TO_STEP', step: 'risk' })
+      return
+    }
+
+    const result = await submitProfile({
+      profileId: existingProfileId,
+      profileInput: payload,
+    })
     if (!result) return
     dispatch({ type: 'SET_PROFILE', input: payload, result })
     dispatch({ type: 'COMPLETE_STEP', step: 'profile' })

@@ -4,6 +4,7 @@ API routes for customer profile management.
 
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -108,7 +109,17 @@ def update_customer_profile(
     # Verify ownership
     require_customer_ownership(current_user.id, customer_id, db)
     
-    db_profile = crud.update_customer_profile(db, customer_id, profile_update)
+    try:
+        db_profile = crud.update_customer_profile(db, customer_id, profile_update)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=exc.errors(
+                include_url=False,
+                include_context=False,
+                include_input=False,
+            ),
+        ) from exc
     if not db_profile:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
