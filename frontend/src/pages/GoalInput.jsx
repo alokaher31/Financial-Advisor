@@ -11,12 +11,12 @@ const PRIORITIES = ['High', 'Medium', 'Low']
 
 function initialFormState(saved) {
   return {
-    goal_type: saved?.goal_type ?? GOAL_TYPES[0],
+    goal_type: saved?.goal_type ?? '',
     target_amount: saved?.target_amount ?? '',
     current_amount: saved?.current_amount ?? '',
     monthly_investment: saved?.monthly_investment ?? '',
     time_horizon_years: saved?.time_horizon_years ?? '',
-    priority: saved?.priority ?? PRIORITIES[1],
+    priority: saved?.priority ?? '',
   }
 }
 
@@ -37,6 +37,8 @@ export default function GoalInput() {
     const target = Number(form.target_amount)
     const current = Number(form.current_amount)
     const nextErrors = {
+      goal_type: form.goal_type ? null : 'Please select a goal type.',
+      priority: form.priority ? null : 'Please select a priority.',
       target_amount: validateRequiredNumber(form.target_amount, { min: 1, label: 'Target amount' }),
       current_amount: validateRequiredNumber(form.current_amount, { min: 0, label: 'Current savings toward goal' }),
       monthly_investment: validateRequiredNumber(form.monthly_investment, { min: 0, label: 'Planned monthly investment' }),
@@ -50,8 +52,8 @@ export default function GoalInput() {
   }
 
   const summaryReady = useMemo(() => {
-    return form.target_amount !== '' && form.current_amount !== '' && form.monthly_investment !== '' && form.time_horizon_years !== ''
-  }, [form.target_amount, form.current_amount, form.monthly_investment, form.time_horizon_years])
+    return form.goal_type !== '' && form.priority !== '' && form.target_amount !== '' && form.current_amount !== '' && form.monthly_investment !== '' && form.time_horizon_years !== ''
+  }, [form.goal_type, form.priority, form.target_amount, form.current_amount, form.monthly_investment, form.time_horizon_years])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -110,13 +112,14 @@ export default function GoalInput() {
         <fieldset className="form-section">
           <legend>Goal Details</legend>
           <div className="form-grid">
-            <FormField id="goal_type" label="Goal Type" required>
+            <FormField id="goal_type" label="Goal Type" required error={errors.goal_type}>
               <select
                 id="goal_type"
-                className="select"
+                className={`select ${errors.goal_type ? 'input--error' : ''}`}
                 value={form.goal_type}
                 onChange={(e) => updateField('goal_type', e.target.value)}
               >
+                <option value="" disabled>Select goal type</option>
                 {GOAL_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {type}
@@ -124,13 +127,14 @@ export default function GoalInput() {
                 ))}
               </select>
             </FormField>
-            <FormField id="priority" label="Priority" required>
+            <FormField id="priority" label="Priority" required error={errors.priority}>
               <select
                 id="priority"
-                className="select"
+                className={`select ${errors.priority ? 'input--error' : ''}`}
                 value={form.priority}
                 onChange={(e) => updateField('priority', e.target.value)}
               >
+                <option value="" disabled>Select priority</option>
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
                     {p}
