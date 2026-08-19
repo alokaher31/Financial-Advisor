@@ -16,7 +16,7 @@ export const STEPS = [
   { key: 'chatbot', label: 'Chat' },
 ]
 
-const STORAGE_KEY = 'finance-advisor-state-v1'
+const STORAGE_KEY_PREFIX = 'finance-advisor-state-v2-user-'
 
 const initialState = {
   step: 'profile',
@@ -31,14 +31,43 @@ const initialState = {
   chat: { conversationId: null, messages: [], draft: '' },
 }
 
-function loadInitialState() {
+function getStorageKey(userId) {
+  // User-specific storage key to prevent cross-user data leakage
+  if (!userId) return null
+  return `${STORAGE_KEY_PREFIX}${userId}`
+}
+
+function loadInitialState(userId) {
+  if (!userId) return initialState
+  
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const storageKey = getStorageKey(userId)
+    const raw = window.localStorage.getItem(storageKey)
     if (!raw) return initialState
     const parsed = JSON.parse(raw)
     return { ...initialState, ...parsed }
   } catch {
     return initialState
+  }
+}
+
+// Clear app state for a specific user
+export function clearUserState(userId) {
+  if (!userId) return
+  try {
+    const storageKey = getStorageKey(userId)
+    window.localStorage.removeItem(storageKey)
+  } catch {
+    // Ignore
+  }
+}
+
+// Clear all old v1 state (migration helper)
+export function clearLegacyState() {
+  try {
+    window.localStorage.removeItem('finance-advisor-state-v1')
+  } catch {
+    // Ignore
   }
 }
 
@@ -83,16 +112,48 @@ function reducer(state, action) {
 
 const AppStateContext = createContext(null)
 
-export function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(reducer, undefined, loadInitialState)
+export function AppProvider({ children, userId }) {
+  const [state, dispatch] = useReducer(reducer, undefined, () => loadInitialState(userId))
+
+  // Reset state when userId changes (user switched accounts)
+  useEffect(() => {
+    const newState = loadInitialState(userId)
+    dispatch({ type: 'RESET' })
+    // Load the new user's state
+    Object.keys(newState).forEach(key => {
+      if (key === 'step') {
+        dispatch({ type: 'GO_TO_STEP', step: newState.step })
+      } else if (key === 'completedSteps') {
+        newState.completedSteps.forEach(step => {
+          dispatch({ type: 'COMPLETE_STEP', step })
+        })
+      } else if (key === 'profile') {
+        dispatch({ type: 'SET_PROFILE', input: newState.profile.input, result: newState.profile.result })
+      } else if (key === 'risk') {
+        dispatch({ type: 'SET_RISK_ANSWERS', answers: newState.risk.answers })
+        dispatch({ type: 'SET_RISK_RESULT', result: newState.risk.result })
+      } else if (key === 'goal') {
+        dispatch({ type: 'SET_GOAL', input: newState.goal.input, result: newState.goal.result })
+      } else if (key === 'plans') {
+        dispatch({ type: 'SET_PLANS', plans: newState.plans })
+      } else if (key === 'comparison') {
+        dispatch({ type: 'SET_COMPARISON', comparison: newState.comparison })
+      } else if (key === 'selectedPlan') {
+        dispatch({ type: 'SET_SELECTED_PLAN', plan: newState.selectedPlan })
+      }
+    })
+  }, [userId])
 
   useEffect(() => {
+    if (!userId) return
+    
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      const storageKey = getStorageKey(userId)
+      window.localStorage.setItem(storageKey, JSON.stringify(state))
     } catch {
       // Storage may be unavailable (private browsing, quota) — non-fatal for the demo.
     }
-  }, [state])
+  }, [state, userId])
 
   const value = useMemo(() => ({ state, dispatch }), [state])
 

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { clearUserState } from './AppContext.jsx'
 
 const AUTH_STORAGE_KEY = 'finance_advisor_token'
 const USER_STORAGE_KEY = 'finance_advisor_user'
@@ -264,12 +265,18 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    const currentUserId = user?.id
     setUser(null)
     setToken(null)
     setError(null)
     try {
       window.localStorage.removeItem(AUTH_STORAGE_KEY)
       window.localStorage.removeItem(USER_STORAGE_KEY)
+      
+      // Clear app state for this user
+      if (currentUserId) {
+        clearUserState(currentUserId)
+      }
     } catch {
       // Ignore
     }

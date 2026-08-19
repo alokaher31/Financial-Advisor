@@ -25,11 +25,46 @@ const STEPPER_KEY_OVERRIDES = { planDetail: 'plans' }
 export default function App() {
   const { isAuthenticated, user, logout } = useAuth()
   const { state, dispatch } = useApp()
-  const ActivePage = STEP_COMPONENTS[state.step] || ProfileForm
-  const stepperCurrentKey = STEPPER_KEY_OVERRIDES[state.step] || state.step
+  
+  // Route guard: enforce onboarding flow
+  // New users or users without completed profile must start at profile
+  const hasProfile = state.profile.result?.profileId != null
+  const hasRisk = state.risk.result?.riskScore != null
+  const hasGoal = state.goal.result?.goalId != null
+  const hasPlans = state.plans.length > 0
+  
+  // Redirect logic: enforce sequential completion
+  let enforcedStep = state.step
+  if (!hasProfile && state.step !== 'profile') {
+    enforcedStep = 'profile'
+  } else if (hasProfile && !hasRisk && state.step !== 'profile' && state.step !== 'risk') {
+    enforcedStep = 'risk'
+  } else if (hasProfile && hasRisk && !hasGoal && !['profile', 'risk', 'goal'].includes(state.step)) {
+    enforcedStep = 'goal'
+  } else if (hasProfile && hasRisk && hasGoal && !hasPlans && state.step === 'plans') {
+    // Plans page will show "generate plans" button, that's fine
+  } else if (state.step === 'planDetail' && !hasPlans) {
+    enforcedStep = 'goal'
+  } else if (state.step === 'chatbot' && !hasProfile) {
+    enforcedStep = 'profile'
+  }
+  
+  // Apply redirect if needed
+  if (enforcedStep !== state.step) {
+    setTimeout(() => dispatch({ type: 'GO_TO_STEP', step: enforcedStep }), 0)
+  }
+  
+  const ActivePage = STEP_COMPONENTS[enforcedStep] || ProfileForm
+  const stepperCurrentKey = STEPPER_KEY_OVERRIDES[enforcedStep] || enforcedStep
 
   function handleStepClick(stepKey) {
-    dispatch({ type: 'GO_TO_STEP', step: stepKey })
+    // Allow navigation only to completed steps or the next step
+    const stepIndex = STEPS.findIndex(s => s.key === stepKey)
+    const currentIndex = STEPS.findIndex(s => s.key === enforcedStep)
+    
+    if (stepKey === 'profile' || state.completedSteps.includes(stepKey) || stepIndex <= currentIndex + 1) {
+      dispatch({ type: 'GO_TO_STEP', step: stepKey })
+    }
   }
 
   if (!isAuthenticated) {
