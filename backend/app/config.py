@@ -54,6 +54,25 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str = "your-jwt-secret-key-here"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 1440  # 24 hours
+    
+    @field_validator("SECRET_KEY", "JWT_SECRET_KEY")
+    @classmethod
+    def check_production_secrets(cls, value, info):
+        """Warn if using default secrets (development acceptable, production dangerous)."""
+        field_name = info.field_name
+        if value in [
+            "your-secret-key-change-in-production",
+            "your-jwt-secret-key-here",
+            "dev-secret-key-change-in-production-0123456789",
+            "dev-jwt-secret-change-in-production-0123456789"
+        ]:
+            import warnings
+            warnings.warn(
+                f"{field_name} is using a default value. "
+                f"Set {field_name} environment variable in production!",
+                UserWarning
+            )
+        return value
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     
     # Logging Settings
