@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import { saveGoal, saveProfile } from '../src/api/apiClient.js'
 import { formatErrorMessage } from '../src/utils/errorMessage.js'
+import { calculateLiveProfileSummary } from '../src/utils/profileSummary.js'
 
 function storageStub() {
   return {
@@ -103,4 +104,34 @@ test('FastAPI validation arrays become readable messages', () => {
     'monthly_income: Input should be greater than 0; age: Input should be less than or equal to 100',
   )
   assert.doesNotMatch(message, /\[object Object\]/)
+})
+
+test('financial summary recalculates directly from edited form values', () => {
+  const first = calculateLiveProfileSummary({
+    monthly_income: '50000',
+    monthly_expenses: '30000',
+    assets: { equity: '100000', cash: '50000' },
+    liabilities: { personal_loan: '25000' },
+  })
+  const edited = calculateLiveProfileSummary({
+    monthly_income: '80000',
+    monthly_expenses: '30000',
+    assets: { equity: '200000', cash: '50000' },
+    liabilities: { personal_loan: '25000' },
+  })
+
+  assert.deepEqual(first, {
+    totalAssets: 150000,
+    totalLiabilities: 25000,
+    netWorth: 125000,
+    monthlySurplus: 20000,
+    savingsRate: 0.4,
+  })
+  assert.deepEqual(edited, {
+    totalAssets: 250000,
+    totalLiabilities: 25000,
+    netWorth: 225000,
+    monthlySurplus: 50000,
+    savingsRate: 0.625,
+  })
 })
