@@ -35,15 +35,21 @@ export default function PlanCard({ plan, isSelected, onSelect, onViewDetails, se
 
       <div className="plan-card__metrics">
         <div>
-          <div className="plan-card__metric-label">Projected Corpus</div>
+          <div className="plan-card__metric-label">
+            Estimated savings by goal date{' '}
+            <span className="plan-card__metric-hint">(if you keep saving your full monthly surplus)</span>
+          </div>
           <div className="plan-card__metric-value">{formatCurrency(plan.projectedCorpus)}</div>
         </div>
         <div>
-          <div className="plan-card__metric-label">Monthly Investment</div>
+          <div className="plan-card__metric-label">
+            Minimum you'd need to save monthly{' '}
+            <span className="plan-card__metric-hint">(to just reach your target — not your full surplus)</span>
+          </div>
           <div className="plan-card__metric-value">{formatCurrency(plan.requiredMonthlyInvestment)}</div>
         </div>
         <div>
-          <div className="plan-card__metric-label">Gap vs Target</div>
+          <div className="plan-card__metric-label">Above / below your goal</div>
           <div
             className="plan-card__metric-value"
             style={{ color: gapIsSurplus ? 'var(--color-success)' : 'var(--color-error)' }}
@@ -52,7 +58,7 @@ export default function PlanCard({ plan, isSelected, onSelect, onViewDetails, se
           </div>
         </div>
         <div>
-          <div className="plan-card__metric-label">Expected Return</div>
+          <div className="plan-card__metric-label">Estimated growth rate</div>
           <div className="plan-card__metric-value">
             {typeof plan.blendedExpectedReturn === 'number'
               ? formatPercent(plan.blendedExpectedReturn, { alreadyPercent: true })
@@ -60,6 +66,11 @@ export default function PlanCard({ plan, isSelected, onSelect, onViewDetails, se
           </div>
         </div>
       </div>
+
+      <p className="plan-card__metric-footnote">
+        Two different numbers above: one assumes you invest your entire monthly surplus every month; 
+        the other is just the minimum needed to hit your goal. They're rarely the same.
+      </p>
 
       {typeof plan.volatility === 'number' && (
         <p className="text-faint" style={{ fontSize: '0.78rem' }}>

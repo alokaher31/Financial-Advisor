@@ -631,10 +631,28 @@ fieldset.form-section legend {
   letter-spacing: 0.03em;
 }
 
+.plan-card__metric-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .plan-card__metric-value {
   font-size: 1rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.plan-card__metric-footnote {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  opacity: 0.75;
+  margin-top: 1rem;
+  line-height: 1.4;
+  font-style: italic;
 }
 
 .plan-card__ai-note {

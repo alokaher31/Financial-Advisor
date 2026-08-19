@@ -68,7 +68,7 @@ export default function PlanDetail() {
 
           <div className="card-grid" style={{ flex: 1, minWidth: 260 }}>
             <div className="stat-tile">
-              <div className="stat-tile__label">Projected Corpus</div>
+              <div className="stat-tile__label">Estimated savings by goal date</div>
               <div className="stat-tile__value">{formatCurrency(plan.projectedCorpus)}</div>
             </div>
             <div className="stat-tile">
@@ -76,7 +76,7 @@ export default function PlanDetail() {
               <div className="stat-tile__value">{formatCurrency(state.goal.input?.target_amount)}</div>
             </div>
             <div className="stat-tile">
-              <div className="stat-tile__label">Gap vs Target</div>
+              <div className="stat-tile__label">Above / below your goal</div>
               <div
                 className="stat-tile__value"
                 style={{ color: gapIsSurplus ? 'var(--color-success)' : 'var(--color-error)' }}
@@ -85,7 +85,7 @@ export default function PlanDetail() {
               </div>
             </div>
             <div className="stat-tile">
-              <div className="stat-tile__label">Required Monthly Investment</div>
+              <div className="stat-tile__label">Minimum you'd need to save monthly</div>
               <div className="stat-tile__value">{formatCurrency(plan.requiredMonthlyInvestment)}</div>
             </div>
           </div>

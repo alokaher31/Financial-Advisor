@@ -1,5 +1,5 @@
 """
-API routes for chat/conversational AI.
+Chat API routes - handles chatbot conversations and RAG management.
 """
 
 from typing import List
@@ -22,6 +22,14 @@ from app.models import (
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+
+# Try to import RAG service (optional dependency)
+try:
+    from app.genai.rag_service import get_rag_service
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+    logger.warning("RAG service unavailable: chromadb or sentence-transformers not installed")
 
 
 @router.post("/", response_model=ChatResponse)
@@ -188,15 +196,19 @@ def delete_chat_session(
 
 
 @router.get("/rag/stats", status_code=status.HTTP_200_OK)
-def get_rag_stats(
-    current_user: dict = Depends(get_current_user)
-):
+def get_rag_stats():
     """
     Get RAG system statistics (knowledge base status).
     
     Returns:
         Statistics about the vector database
     """
+    if not RAG_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="RAG service unavailable. Install chromadb and sentence-transformers."
+        )
+    
     try:
         rag_service = get_rag_service()
         stats = rag_service.get_stats()
@@ -210,9 +222,7 @@ def get_rag_stats(
 
 
 @router.post("/rag/reinitialize", status_code=status.HTTP_200_OK)
-def reinitialize_rag(
-    current_user: dict = Depends(get_current_user)
-):
+def reinitialize_rag():
     """
     Reinitialize RAG system and reindex knowledge base.
     
@@ -221,10 +231,16 @@ def reinitialize_rag(
     Returns:
         Reindexing results
     """
+    if not RAG_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="RAG service unavailable. Install chromadb and sentence-transformers."
+        )
+    
     try:
         from app.genai.rag_service import initialize_rag
         result = initialize_rag()
-        logger.info(f"RAG reinitialized by user {current_user.get('user_id')}: {result}")
+        logger.info(f"RAG reinitialized: {result}")
         return result
     except Exception as e:
         logger.error(f"Error reinitializing RAG: {e}")
