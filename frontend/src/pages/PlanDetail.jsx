@@ -85,11 +85,37 @@ export default function PlanDetail() {
               </div>
             </div>
             <div className="stat-tile">
-              <div className="stat-tile__label">Minimum you'd need to save monthly</div>
+              <div className="stat-tile__label">Planned Monthly Investment</div>
+              <div className="stat-tile__value">{formatCurrency(plan.monthlyInvestment)}</div>
+            </div>
+            <div className="stat-tile">
+              <div className="stat-tile__label">Minimum Monthly Needed</div>
               <div className="stat-tile__value">{formatCurrency(plan.requiredMonthlyInvestment)}</div>
+              <div className="stat-tile__hint">Total monthly amount needed—not extra on top of your plan.</div>
             </div>
           </div>
         </div>
+      </div>
+
+      <div className={`alert mt-4 ${plan.isGoalAchievable ? 'alert-success' : 'alert-warning'}`}>
+        <div>
+          <strong>{plan.isGoalAchievable ? 'Goal is projected to be funded.' : 'Goal has a projected shortfall.'}</strong>{' '}
+          {plan.isGoalAchievable
+            ? `Your planned ${formatCurrency(plan.monthlyInvestment)} per month is at least the calculated minimum of ${formatCurrency(plan.requiredMonthlyInvestment)}.`
+            : `You would need approximately ${formatCurrency(plan.additionalMonthlyInvestmentNeeded)} more per month than currently planned.`}
+        </div>
+      </div>
+
+      <div className="card mt-4">
+        <h3 className="mb-4">How the minimum was calculated</h3>
+        <ul style={{ margin: 0, paddingLeft: 'var(--space-5)', color: 'var(--color-text-muted)' }}>
+          <li>Target at the end of the horizon: {formatCurrency(state.goal.input?.target_amount)}</li>
+          <li>Current goal savings today: {formatCurrency(plan.currentSavings)}</li>
+          <li>Projected value of current savings without new deposits: {formatCurrency(plan.futureValueOfCurrentSavings)}</li>
+          <li>Minimum monthly deposit: {formatCurrency(plan.requiredMonthlyInvestment)} for {state.goal.input?.time_horizon_years ?? '—'} year(s)</li>
+          <li>Total cash deposited at that minimum: {formatCurrency(plan.totalRequiredContributions)}</li>
+          <li>Your planned cash deposits: {formatCurrency(plan.totalPlannedContributions)}</li>
+        </ul>
       </div>
 
       {plan.explanation && (
@@ -114,7 +140,7 @@ export default function PlanDetail() {
             <li>Illustrative volatility: {formatPercent(plan.volatility, { alreadyPercent: true })}</li>
           )}
           <li>Time horizon: {state.goal.input?.time_horizon_years ?? '—'} year(s)</li>
-          <li>Contributions assumed monthly, based on projected surplus and required investment.</li>
+          <li>Corpus uses the planned monthly investment entered with this goal.</li>
           <li>Returns are based on historical/assumed asset-class averages, not guaranteed future performance.</li>
         </ul>
       </div>

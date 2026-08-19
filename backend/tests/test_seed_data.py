@@ -1,55 +1,34 @@
+"""Seed-data tests against an isolated database."""
+
 from sqlalchemy import func, select
 
-from app.db.database import SessionLocal
-from app.db.db_models import Customer, Goal
+from app.db.db_models import CustomerProfileDB, GoalDB, RiskAssessmentDB
+from app.db.seed_data import (
+    SAMPLE_CUSTOMERS,
+    SAMPLE_GOALS,
+    seed_customers,
+    seed_goals,
+    seed_risk_assessments,
+)
 
 
-def test_customer_count():
-    """Database should contain exactly 8 seeded customers."""
+def test_seed_data_is_complete_and_valid(db_session):
+    customer_ids = seed_customers(db_session)
+    seed_goals(db_session, customer_ids)
+    seed_risk_assessments(db_session, customer_ids)
 
-    db = SessionLocal()
+    customer_count = db_session.scalar(
+        select(func.count()).select_from(CustomerProfileDB)
+    )
+    goal_count = db_session.scalar(select(func.count()).select_from(GoalDB))
+    assessment_count = db_session.scalar(
+        select(func.count()).select_from(RiskAssessmentDB)
+    )
 
-    try:
-        count = db.scalar(
-            select(func.count()).select_from(Customer)
-        )
+    assert customer_count == len(SAMPLE_CUSTOMERS)
+    assert goal_count == sum(len(goals) for goals in SAMPLE_GOALS.values())
+    assert assessment_count == len(SAMPLE_CUSTOMERS)
 
-        assert count == 8
-
-    finally:
-        db.close()
-
-
-def test_goal_count():
-    """Database should contain exactly 8 seeded goals."""
-
-    db = SessionLocal()
-
-    try:
-        count = db.scalar(
-            select(func.count()).select_from(Goal)
-        )
-
-        assert count == 8
-
-    finally:
-        db.close()
-
-
-def test_customers_have_goals():
-    """Every seeded customer should have at least one goal."""
-
-    db = SessionLocal()
-
-    try:
-        customers = db.scalars(
-            select(Customer)
-        ).all()
-
-        assert len(customers) == 8
-
-        for customer in customers:
-            assert len(customer.goals) >= 1
-
-    finally:
-        db.close()
+    customers = db_session.scalars(select(CustomerProfileDB)).all()
+    assert all(customer.goals for customer in customers)
+    assert all(customer.risk_assessments for customer in customers)

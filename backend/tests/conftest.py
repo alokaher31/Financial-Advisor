@@ -5,12 +5,14 @@ Pytest configuration and shared fixtures for testing.
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.db.db_models import Base
 from app.db.database import get_db
 from app.config import get_settings
+from app.core.risk_scoring import RISK_QUESTIONNAIRE
 
 # Override settings for testing
 settings = get_settings()
@@ -19,7 +21,8 @@ settings = get_settings()
 TEST_DATABASE_URL = "sqlite:///:memory:"
 test_engine = create_engine(
     TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
@@ -57,8 +60,23 @@ def client(db_session):
     
     app.dependency_overrides[get_db] = override_get_db
     
-    with TestClient(app) as test_client:
+    test_client = TestClient(app)
+    try:
+        register_response = test_client.post(
+            "/api/v1/auth/register",
+            json={
+                "name": "API Test User",
+                "email": "api-tests@example.com",
+                "password": "testpass123",
+            },
+        )
+        assert register_response.status_code == 201
+        test_client.headers["Authorization"] = (
+            f"Bearer {register_response.json()['access_token']}"
+        )
         yield test_client
+    finally:
+        test_client.close()
     
     app.dependency_overrides.clear()
 
@@ -94,15 +112,4 @@ def sample_goal_data():
 @pytest.fixture
 def sample_risk_answers():
     """Sample risk assessment answers for testing."""
-    return {
-        "age": "35-44",
-        "investment_experience": "some",
-        "time_horizon": "long",
-        "market_reaction": "hold",
-        "risk_comfort": "moderate",
-        "goal_priority": "balanced",
-        "income_stability": "stable",
-        "emergency_fund": "yes",
-        "debt_level": "low",
-        "investment_knowledge": "moderate",
-    }
+    return {question.id: question.options[2].id for question in RISK_QUESTIONNAIRE}

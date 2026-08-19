@@ -67,10 +67,13 @@ def calculate_debt_to_income_ratio(
     total_liabilities: Real,
     monthly_income: Real,
 ) -> float:
-    """Calculate total liabilities divided by monthly income.
+    """Calculate total liabilities divided by annual gross income.
 
-    This follows the supplied project contract. It is not the conventional
-    lending DTI formula, which normally uses monthly debt payments.
+    Monthly debt-payment data is not collected by the application, so a
+    conventional lending DTI cannot be calculated. Using annual income keeps
+    the available debt-burden proxy dimensionally meaningful; the previous
+    implementation divided total debt by a single month's income and inflated
+    every result by a factor of twelve.
 
     Returns:
         A decimal ratio. If both values are zero, returns ``0.0``.
@@ -89,7 +92,7 @@ def calculate_debt_to_income_ratio(
             "monthly_income must be greater than zero when total_liabilities "
             "is positive"
         )
-    ratio = liabilities / income
+    ratio = liabilities / (income * 12)
     if not math.isfinite(ratio):
         raise ValueError("inputs produce an unrepresentable debt-to-income ratio")
     return ratio

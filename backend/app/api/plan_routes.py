@@ -2,6 +2,7 @@
 API routes for financial plan management.
 """
 
+import math
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ from app.core.plan_generator import generate_plans
 from app.data.data_loader import load_historical_data
 from app.utils.logger import logger
 from app.utils.exceptions import PlanGenerationException
+from app.utils.security import get_current_user, require_customer_ownership
 
 router = APIRouter(prefix="/plans", tags=["Financial Plans"])
 
@@ -41,7 +43,7 @@ class PlanCompareRequest(BaseModel):
 class WhatIfScenarioInput(BaseModel):
     """The hypothetical change to evaluate."""
     type: str = Field(..., description="e.g. 'extra_monthly_investment'")
-    amount: float = Field(..., description="Adjustment amount")
+    amount: float = Field(..., ge=0, description="Adjustment amount")
 
 
 class WhatIfRequest(BaseModel):
@@ -77,24 +79,27 @@ def _persist_generated_plans(
             equity_percentage=float(alloc.get("Equity", 0)),
             debt_percentage=float(alloc.get("Debt", 0)),
             cash_percentage=float(alloc.get("Cash", 0)),
+            gold_percentage=float(alloc.get("Gold", 0)),
+            real_estate_percentage=float(alloc.get("Real_Estate", 0)),
         )
 
         goal_allocation = GoalAllocation(
             goal_id=primary_goal.id,
             goal_name=primary_goal.goal_name,
-            monthly_allocation=float(plan_dict.get("required_monthly_investment", 0)),
+            monthly_allocation=float(plan_dict.get("monthly_investment", 0)),
             priority_rank=1,
         )
 
         surplus = customer.monthly_income - customer.monthly_expenses
+        monthly_investment = float(plan_dict.get("monthly_investment", 0))
         monthly_breakdown = MonthlyBreakdown(
             total_income=customer.monthly_income,
             total_expenses=customer.monthly_expenses,
             available_for_savings=max(surplus, 0),
-            allocated_to_goals=float(plan_dict.get("required_monthly_investment", 0)),
+            allocated_to_goals=monthly_investment,
             emergency_fund_contribution=0,
-            discretionary_savings=max(surplus - float(plan_dict.get("required_monthly_investment", 0)), 0),
-            surplus_deficit=surplus - float(plan_dict.get("required_monthly_investment", 0)),
+            discretionary_savings=max(surplus - monthly_investment, 0),
+            surplus_deficit=surplus - monthly_investment,
         )
 
         plan_create = PlanCreate(
@@ -102,7 +107,7 @@ def _persist_generated_plans(
             plan_name=plan_dict["plan_name"],
             status=PlanStatus.DRAFT,
             asset_allocation=asset_allocation,
-            monthly_savings_target=float(plan_dict.get("required_monthly_investment", 0)),
+            monthly_savings_target=monthly_investment,
             goal_allocations=[goal_allocation],
             monthly_breakdown=monthly_breakdown,
             assumptions={
@@ -110,10 +115,16 @@ def _persist_generated_plans(
                 "blended_expected_return": plan_dict.get("blended_expected_return"),
                 "projected_corpus": plan_dict.get("projected_corpus"),
                 "gap_vs_target": plan_dict.get("gap_vs_target"),
+                "required_monthly_investment": plan_dict.get("required_monthly_investment"),
+                "additional_monthly_investment_needed": plan_dict.get("additional_monthly_investment_needed"),
+                "current_savings": plan_dict.get("current_savings"),
+                "future_value_of_current_savings": plan_dict.get("future_value_of_current_savings"),
+                "total_planned_contributions": plan_dict.get("total_planned_contributions"),
+                "total_required_contributions": plan_dict.get("total_required_contributions"),
+                "is_goal_achievable": plan_dict.get("is_goal_achievable"),
                 "risk_level": plan_dict.get("risk_level"),
                 "time_horizon_years": primary_goal.time_horizon_years,
                 "target_amount": primary_goal.target_amount,
-                "current_savings": primary_goal.current_savings,
             },
         )
 
@@ -134,6 +145,7 @@ def _persist_generated_plans(
 @router.post("/generate", status_code=status.HTTP_200_OK)
 def generate_financial_plans(
     request: PlanCreateRequest,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -143,13 +155,8 @@ def generate_financial_plans(
     include real ``id`` fields usable with ``POST /plans/{id}/select``.
     """
     try:
-        # Verify customer exists
+        require_customer_ownership(current_user.id, request.customer_id, db)
         customer = crud.get_customer_profile(db, request.customer_id)
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Customer with ID {request.customer_id} not found"
-            )
 
         # Verify goals exist
         if not request.goal_ids:
@@ -182,6 +189,11 @@ def generate_financial_plans(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Risk assessment with ID {request.risk_assessment_id} not found"
                 )
+            if risk_assessment.customer_id != request.customer_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Risk assessment does not belong to the requested customer",
+                )
         else:
             risk_assessment = crud.get_latest_risk_assessment(db, request.customer_id)
             if not risk_assessment:
@@ -194,13 +206,28 @@ def generate_financial_plans(
 
         # Prepare customer profile for plan generator
         customer_profile = {
+            "age": customer.age,
             "monthly_income": customer.monthly_income,
             "monthly_expenses": customer.monthly_expenses,
         }
+        if request.custom_parameters and "monthly_investment" in request.custom_parameters:
+            monthly_investment = request.custom_parameters["monthly_investment"]
+            if isinstance(monthly_investment, bool) or not isinstance(monthly_investment, (int, float)):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="monthly_investment must be a number",
+                )
+            if not math.isfinite(monthly_investment) or monthly_investment < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="monthly_investment must be a finite number greater than or equal to zero",
+                )
+            customer_profile["monthly_investment"] = monthly_investment
 
         # Use primary goal for plan generation
         primary_goal = goals[0]
         goal_data = {
+            "goal_type": primary_goal.goal_type,
             "target_amount": primary_goal.target_amount,
             "current_amount": primary_goal.current_savings,
             "time_horizon_years": primary_goal.time_horizon_years,
@@ -247,6 +274,7 @@ def generate_financial_plans(
 @router.post("/compare", status_code=status.HTTP_200_OK)
 def compare_financial_plans(
     request: PlanCompareRequest,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -256,13 +284,7 @@ def compare_financial_plans(
     Falls back to a deterministic comparison if the LLM is unavailable.
     """
     try:
-        # Verify customer exists
-        customer = crud.get_customer_profile(db, request.customer_id)
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Customer with ID {request.customer_id} not found"
-            )
+        require_customer_ownership(current_user.id, request.customer_id, db)
 
         # Load the plans from DB
         plans_data = []
@@ -287,12 +309,25 @@ def compare_financial_plans(
                     "Equity": alloc_json.get("equity_percentage", 0),
                     "Debt": alloc_json.get("debt_percentage", 0),
                     "Cash": alloc_json.get("cash_percentage", 0),
+                    "Gold": alloc_json.get("gold_percentage", 0),
+                    "Real_Estate": alloc_json.get("real_estate_percentage", 0),
                 },
                 "blended_expected_return": assumptions.get("blended_expected_return", 0),
                 "projected_corpus": assumptions.get("projected_corpus", 0),
                 "gap_vs_target": assumptions.get("gap_vs_target", 0),
-                "required_monthly_investment": db_plan.monthly_savings_target,
-                "risk_level": assumptions.get("risk_category", db_plan.plan_name),
+                "monthly_investment": db_plan.monthly_savings_target,
+                "required_monthly_investment": assumptions.get(
+                    "required_monthly_investment", db_plan.monthly_savings_target
+                ),
+                "additional_monthly_investment_needed": assumptions.get(
+                    "additional_monthly_investment_needed", 0
+                ),
+                "risk_level": assumptions.get("risk_level", db_plan.plan_name),
+                "current_savings": assumptions.get("current_savings", 0),
+                "future_value_of_current_savings": assumptions.get("future_value_of_current_savings", 0),
+                "total_planned_contributions": assumptions.get("total_planned_contributions", 0),
+                "total_required_contributions": assumptions.get("total_required_contributions", 0),
+                "is_goal_achievable": assumptions.get("is_goal_achievable", False),
             })
 
         # Try GenAI comparison, fall back to deterministic
@@ -335,6 +370,7 @@ def compare_financial_plans(
 @router.post("/whatif", status_code=status.HTTP_200_OK)
 def whatif_analysis(
     request: WhatIfRequest,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -344,13 +380,8 @@ def whatif_analysis(
     a before/after comparison with an explanation.
     """
     try:
-        # Verify customer exists
+        require_customer_ownership(current_user.id, request.customer_id, db)
         customer = crud.get_customer_profile(db, request.customer_id)
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Customer with ID {request.customer_id} not found"
-            )
 
         # Verify goal exists
         goal = crud.get_goal(db, request.goal_id)
@@ -358,6 +389,11 @@ def whatif_analysis(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Goal with ID {request.goal_id} not found"
+            )
+        if goal.customer_id != request.customer_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Goal {request.goal_id} does not belong to customer {request.customer_id}",
             )
 
         # Verify plan exists
@@ -367,11 +403,17 @@ def whatif_analysis(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Plan with ID {request.plan_id} not found"
             )
+        if db_plan.customer_id != request.customer_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Plan {request.plan_id} does not belong to customer {request.customer_id}",
+            )
 
         # Reconstruct inputs for the whatif calculator
         customer_profile = {
             "monthly_income": customer.monthly_income,
             "monthly_expenses": customer.monthly_expenses,
+            "monthly_investment": db_plan.monthly_savings_target,
         }
         goal_data = {
             "target_amount": goal.target_amount,
@@ -389,25 +431,20 @@ def whatif_analysis(
         # Map scenario type to whatif_analyzer parameter
         scenario = request.scenario
         if scenario.type == "extra_monthly_investment":
-            # This is an INVESTMENT INCREASE scenario - calculate the new surplus available
-            # Original surplus = income - expenses
-            # New surplus = original surplus + extra amount
-            original_surplus = customer.monthly_income - customer.monthly_expenses
-            new_surplus = original_surplus + scenario.amount
-            new_expenses = customer.monthly_income - new_surplus
-            
-            adjustment_parameter = "monthly_expenses"
-            adjusted_value = new_expenses
-            if adjusted_value < 0:
-                adjusted_value = 0
+            adjustment_parameter = "monthly_investment"
+            adjusted_value = db_plan.monthly_savings_target + scenario.amount
+        elif scenario.type == "monthly_investment":
+            adjustment_parameter = "monthly_investment"
+            adjusted_value = scenario.amount
         elif scenario.type in ("monthly_income", "monthly_expenses", "time_horizon_years",
                                "current_amount", "target_amount"):
             adjustment_parameter = scenario.type
             adjusted_value = scenario.amount
         else:
-            # Default: treat as extra investment by reducing expenses
-            adjustment_parameter = "monthly_expenses"
-            adjusted_value = max(customer.monthly_expenses - scenario.amount, 0)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unsupported what-if scenario type: {scenario.type}",
+            )
 
         # Use the whatif calculator
         from app.genai.whatif_analyzer import calculate_whatif_scenario
@@ -428,13 +465,9 @@ def whatif_analysis(
         impact = whatif_result.get("impact", {})
 
         # Calculate actual contribution amounts for before/after display
-        base_surplus = customer.monthly_income - customer.monthly_expenses
-        adjusted_surplus = customer.monthly_income - adjusted_value if adjustment_parameter == "monthly_expenses" else base_surplus
-        
-        # For extra_monthly_investment scenarios, show the actual contribution amounts
-        if scenario.type == "extra_monthly_investment":
-            before_contribution = base_surplus
-            after_contribution = adjusted_surplus
+        if adjustment_parameter == "monthly_investment":
+            before_contribution = customer_profile["monthly_investment"]
+            after_contribution = adjusted_value
         else:
             # For other scenarios, fall back to required monthly investment
             before_contribution = base.get("required_monthly_investment", 0)
@@ -515,6 +548,7 @@ def _deterministic_comparison(plans: list[dict]) -> str:
 @router.post("/", response_model=Plan, status_code=status.HTTP_201_CREATED)
 def create_plan(
     plan: PlanCreate,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -523,13 +557,7 @@ def create_plan(
     Use this after calling /generate to persist a selected plan.
     """
     try:
-        # Verify customer exists
-        customer = crud.get_customer_profile(db, plan.customer_id)
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Customer with ID {plan.customer_id} not found"
-            )
+        require_customer_ownership(current_user.id, plan.customer_id, db)
 
         logger.info(f"Creating plan '{plan.plan_name}' for customer: {plan.customer_id}")
         db_plan = crud.create_plan(db, plan)
@@ -549,6 +577,7 @@ def create_plan(
 @router.get("/{plan_id}", response_model=Plan)
 def get_plan(
     plan_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a plan by ID."""
@@ -558,6 +587,7 @@ def get_plan(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Plan with ID {plan_id} not found"
         )
+    require_customer_ownership(current_user.id, db_plan.customer_id, db)
     return db_plan
 
 
@@ -566,16 +596,11 @@ def get_customer_plans(
     customer_id: int,
     skip: int = 0,
     limit: int = 100,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all plans for a specific customer."""
-    # Verify customer exists
-    customer = crud.get_customer_profile(db, customer_id)
-    if not customer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Customer with ID {customer_id} not found"
-        )
+    require_customer_ownership(current_user.id, customer_id, db)
 
     plans = crud.get_customer_plans(db, customer_id, skip, limit)
     return plans
@@ -584,9 +609,11 @@ def get_customer_plans(
 @router.get("/customer/{customer_id}/active", response_model=Plan)
 def get_active_plan(
     customer_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get the active plan for a customer."""
+    require_customer_ownership(current_user.id, customer_id, db)
     plan = crud.get_active_plan(db, customer_id)
     if not plan:
         raise HTTPException(
@@ -600,15 +627,18 @@ def get_active_plan(
 def update_plan(
     plan_id: int,
     plan_update: PlanUpdate,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Update a plan (e.g., change status, add notes)."""
-    db_plan = crud.update_plan(db, plan_id, plan_update)
-    if not db_plan:
+    existing_plan = crud.get_plan(db, plan_id)
+    if not existing_plan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Plan with ID {plan_id} not found"
         )
+    require_customer_ownership(current_user.id, existing_plan.customer_id, db)
+    db_plan = crud.update_plan(db, plan_id, plan_update)
     logger.info(f"Plan updated: {plan_id}")
     return db_plan
 
@@ -616,6 +646,7 @@ def update_plan(
 @router.post("/{plan_id}/select", response_model=Plan)
 def select_plan(
     plan_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -629,6 +660,7 @@ def select_plan(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Plan with ID {plan_id} not found"
         )
+    require_customer_ownership(current_user.id, db_plan.customer_id, db)
 
     # Deactivate other active plans for this customer
     active_plan = crud.get_active_plan(db, db_plan.customer_id)
@@ -645,14 +677,17 @@ def select_plan(
 @router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_plan(
     plan_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a plan."""
-    success = crud.delete_plan(db, plan_id)
-    if not success:
+    existing_plan = crud.get_plan(db, plan_id)
+    if not existing_plan:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Plan with ID {plan_id} not found"
         )
+    require_customer_ownership(current_user.id, existing_plan.customer_id, db)
+    success = crud.delete_plan(db, plan_id)
     logger.info(f"Plan deleted: {plan_id}")
     return None

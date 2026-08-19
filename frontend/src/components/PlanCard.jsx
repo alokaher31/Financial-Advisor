@@ -42,9 +42,13 @@ export default function PlanCard({ plan, isSelected, onSelect, onViewDetails, se
           <div className="plan-card__metric-value">{formatCurrency(plan.projectedCorpus)}</div>
         </div>
         <div>
+          <div className="plan-card__metric-label">Planned Monthly Investment</div>
+          <div className="plan-card__metric-value">{formatCurrency(plan.monthlyInvestment)}</div>
+        </div>
+        <div>
           <div className="plan-card__metric-label">
-            Minimum you'd need to save monthly{' '}
-            <span className="plan-card__metric-hint">(to just reach your target — not your full surplus)</span>
+            Minimum Monthly Needed{' '}
+            <span className="plan-card__metric-hint">(total needed to reach the target)</span>
           </div>
           <div className="plan-card__metric-value">{formatCurrency(plan.requiredMonthlyInvestment)}</div>
         </div>
@@ -68,8 +72,8 @@ export default function PlanCard({ plan, isSelected, onSelect, onViewDetails, se
       </div>
 
       <p className="plan-card__metric-footnote">
-        Two different numbers above: one assumes you invest your entire monthly surplus every month; 
-        the other is just the minimum needed to hit your goal. They're rarely the same.
+        The planned amount is what you entered; the minimum is the total monthly amount calculated
+        to reach the target. They are usually different.
       </p>
 
       {typeof plan.volatility === 'number' && (

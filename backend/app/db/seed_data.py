@@ -19,6 +19,7 @@ from app.models import (
     GoalPriority,
     RiskAssessmentCreate,
 )
+from app.core.risk_scoring import RISK_QUESTIONNAIRE
 
 logger = logging.getLogger(__name__)
 
@@ -206,67 +207,21 @@ SAMPLE_GOALS = {
 
 
 # Sample risk assessment answers
+def _answers_at_weight(weight: int) -> dict[str, str]:
+    return {
+        question.id: next(
+            option.id for option in question.options if option.weight == weight
+        )
+        for question in RISK_QUESTIONNAIRE
+    }
+
+
 SAMPLE_RISK_ASSESSMENTS = {
-    "Rajesh Kumar": {
-        "age": "35-44",
-        "investment_experience": "some",
-        "time_horizon": "long",
-        "market_reaction": "hold",
-        "risk_comfort": "moderate",
-        "goal_priority": "balanced",
-        "income_stability": "stable",
-        "emergency_fund": "yes",
-        "debt_level": "low",
-        "investment_knowledge": "moderate",
-    },
-    "Priya Sharma": {
-        "age": "25-34",
-        "investment_experience": "limited",
-        "time_horizon": "medium",
-        "market_reaction": "worried",
-        "risk_comfort": "low",
-        "goal_priority": "security",
-        "income_stability": "stable",
-        "emergency_fund": "partial",
-        "debt_level": "low",
-        "investment_knowledge": "basic",
-    },
-    "Amit Patel": {
-        "age": "35-44",
-        "investment_experience": "extensive",
-        "time_horizon": "long",
-        "market_reaction": "buy_more",
-        "risk_comfort": "high",
-        "goal_priority": "growth",
-        "income_stability": "variable",
-        "emergency_fund": "yes",
-        "debt_level": "moderate",
-        "investment_knowledge": "advanced",
-    },
-    "Sneha Reddy": {
-        "age": "25-34",
-        "investment_experience": "beginner",
-        "time_horizon": "short",
-        "market_reaction": "sell",
-        "risk_comfort": "very_low",
-        "goal_priority": "security",
-        "income_stability": "stable",
-        "emergency_fund": "no",
-        "debt_level": "low",
-        "investment_knowledge": "basic",
-    },
-    "Vikram Singh": {
-        "age": "45-54",
-        "investment_experience": "some",
-        "time_horizon": "medium",
-        "market_reaction": "hold",
-        "risk_comfort": "moderate",
-        "goal_priority": "balanced",
-        "income_stability": "stable",
-        "emergency_fund": "yes",
-        "debt_level": "low",
-        "investment_knowledge": "moderate",
-    },
+    "Rajesh Kumar": _answers_at_weight(2),
+    "Priya Sharma": _answers_at_weight(1),
+    "Amit Patel": _answers_at_weight(3),
+    "Sneha Reddy": _answers_at_weight(1),
+    "Vikram Singh": _answers_at_weight(2),
 }
 
 

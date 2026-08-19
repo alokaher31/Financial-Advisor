@@ -142,6 +142,29 @@ def test_calculate_whatif_scenario_income_increase(
     assert result["adjusted_plan"]["projected_corpus"] > result["base_plan"]["projected_corpus"]
 
 
+def test_calculate_whatif_scenario_sets_monthly_investment(
+    customer_profile, goal, historical_data
+):
+    profile = {**customer_profile, "monthly_investment": 40_000}
+    result = calculate_whatif_scenario(
+        customer_profile=profile,
+        goal=goal,
+        risk_category="Moderate",
+        historical_data=historical_data,
+        adjustment_parameter="monthly_investment",
+        adjusted_value=10_000,
+        plan_name="Balanced",
+    )
+
+    assert result["adjustments"] == {
+        "parameter": "monthly_investment",
+        "original_value": 40_000.0,
+        "adjusted_value": 10_000.0,
+        "change": -30_000.0,
+    }
+    assert result["adjusted_plan"]["projected_corpus"] < result["base_plan"]["projected_corpus"]
+
+
 def test_calculate_whatif_scenario_time_extension(
     customer_profile, goal, historical_data
 ):

@@ -16,14 +16,24 @@ from app.models import (
 )
 from app.config import get_settings
 from app.utils.logger import logger
+from app.utils.security import get_current_user, require_customer_ownership
 
 router = APIRouter(prefix="/goal", tags=["Financial Goals"])
 settings = get_settings()
 
 
+def _goal_return_rate(goal_type: str) -> float:
+    """Return the decimal annual assumption used for pre-plan goal estimates."""
+
+    if goal_type in {"emergency_fund", "debt_payoff"}:
+        return settings.DEFAULT_SAVINGS_RATE
+    return settings.DEFAULT_EQUITY_RETURN
+
+
 @router.post("/", response_model=Goal, status_code=status.HTTP_201_CREATED)
 def create_goal(
     goal: GoalCreate,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -34,20 +44,12 @@ def create_goal(
     - Achievability based on customer's surplus
     """
     try:
-        # Verify customer exists
-        customer = crud.get_customer_profile(db, goal.customer_id)
-        if not customer:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Customer with ID {goal.customer_id} not found"
-            )
+        require_customer_ownership(current_user.id, goal.customer_id, db)
         
         logger.info(f"Creating goal '{goal.goal_name}' for customer: {goal.customer_id}")
         
         # Use appropriate return rate based on goal type
-        return_rate = settings.DEFAULT_EQUITY_RETURN  # 12% for equity-based goals
-        if goal.goal_type.value in ["emergency_fund", "debt_payoff"]:
-            return_rate = settings.DEFAULT_SAVINGS_RATE  # 5% for conservative goals
+        return_rate = _goal_return_rate(goal.goal_type.value)
         
         db_goal = crud.create_goal(db, goal, return_rate=return_rate)
         logger.info(
@@ -68,6 +70,7 @@ def create_goal(
 @router.get("/{goal_id}", response_model=Goal)
 def get_goal(
     goal_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get a goal by ID."""
@@ -77,6 +80,7 @@ def get_goal(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Goal with ID {goal_id} not found"
         )
+    require_customer_ownership(current_user.id, db_goal.customer_id, db)
     return db_goal
 
 
@@ -85,16 +89,11 @@ def get_customer_goals(
     customer_id: int,
     skip: int = 0,
     limit: int = 100,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Get all goals for a specific customer."""
-    # Verify customer exists
-    customer = crud.get_customer_profile(db, customer_id)
-    if not customer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Customer with ID {customer_id} not found"
-        )
+    require_customer_ownership(current_user.id, customer_id, db)
     
     goals = crud.get_customer_goals(db, customer_id, skip, limit)
     return goals
@@ -104,6 +103,7 @@ def get_customer_goals(
 def update_goal(
     goal_id: int,
     goal_update: GoalUpdate,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -111,7 +111,24 @@ def update_goal(
     
     Automatically recalculates required savings and achievability.
     """
-    db_goal = crud.update_goal(db, goal_id, goal_update)
+    existing_goal = crud.get_goal(db, goal_id)
+    if not existing_goal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Goal with ID {goal_id} not found",
+        )
+    require_customer_ownership(current_user.id, existing_goal.customer_id, db)
+    goal_type = (
+        goal_update.goal_type.value
+        if goal_update.goal_type is not None
+        else existing_goal.goal_type
+    )
+    db_goal = crud.update_goal(
+        db,
+        goal_id,
+        goal_update,
+        return_rate=_goal_return_rate(goal_type),
+    )
     if not db_goal:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -124,9 +141,17 @@ def update_goal(
 @router.delete("/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_goal(
     goal_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete a goal."""
+    existing_goal = crud.get_goal(db, goal_id)
+    if not existing_goal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Goal with ID {goal_id} not found",
+        )
+    require_customer_ownership(current_user.id, existing_goal.customer_id, db)
     success = crud.delete_goal(db, goal_id)
     if not success:
         raise HTTPException(
@@ -140,6 +165,7 @@ def delete_goal(
 @router.get("/{goal_id}/calculation", response_model=GoalCalculation)
 def get_goal_calculation(
     goal_id: int,
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -157,14 +183,13 @@ def get_goal_calculation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Goal with ID {goal_id} not found"
         )
+    require_customer_ownership(current_user.id, db_goal.customer_id, db)
     
     customer = crud.get_customer_profile(db, db_goal.customer_id)
     amount_needed = db_goal.target_amount - db_goal.current_savings
     
     # Determine return rate based on goal type
-    return_rate = settings.DEFAULT_EQUITY_RETURN
-    if db_goal.goal_type in ["emergency_fund", "debt_payoff"]:
-        return_rate = settings.DEFAULT_SAVINGS_RATE
+    return_rate = _goal_return_rate(db_goal.goal_type)
     
     # Calculate achievability percentage
     achievability_pct = 0.0

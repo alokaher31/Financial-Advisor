@@ -6,7 +6,7 @@
  * backend. It maps frontend field names to backend expectations and normalises
  * backend responses into the shapes the UI components expect.
  *
- * Set VITE_USE_MOCK_DATA=false in .env.local to use the real backend API.
+ * Set VITE_USE_MOCK_DATA=true in .env.local only when demo data is desired.
  */
 
 import {
@@ -25,19 +25,18 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 ).replace(/\/+$/, '');
 
-// Default to mock mode unless explicitly disabled, so the app is usable
-// standalone while backend routes are not available.
+// Real calculations are the safe default. Mock mode must be explicitly enabled
+// because mock responses do not reflect any values entered by the user.
 const USE_MOCK_DATA =
-  String(import.meta.env.VITE_USE_MOCK_DATA ?? 'true').toLowerCase() !==
-  'false';
+  String(import.meta.env.VITE_USE_MOCK_DATA ?? 'false').toLowerCase() ===
+  'true';
 
 // Warn if running on mock data
 if (USE_MOCK_DATA) {
   console.warn(
     '⚠️ WARNING: Running on MOCK DATA. Backend is not connected.\n' +
-    'To connect to the real backend:\n' +
-    '1. Create frontend/.env.local with VITE_USE_MOCK_DATA=false\n' +
-    '2. Ensure backend is running at ' + API_BASE_URL
+    'Values entered in the forms will not affect mock plan projections.\n' +
+    'Set VITE_USE_MOCK_DATA=false and run the backend at ' + API_BASE_URL
   );
 }
 
@@ -52,7 +51,9 @@ export class ApiError extends Error {
 
 async function request(path, { method = 'GET', body } = {}) {
   // Get token from localStorage
-  const token = window.localStorage.getItem('finance_advisor_token');
+  const token =
+    window.localStorage.getItem('finance_advisor_token') ||
+    window.sessionStorage.getItem('finance_advisor_token');
   
   let response;
   try {
@@ -89,6 +90,9 @@ async function request(path, { method = 'GET', body } = {}) {
       // Clear invalid token
       window.localStorage.removeItem('finance_advisor_token');
       window.localStorage.removeItem('finance_advisor_user');
+      window.sessionStorage.removeItem('finance_advisor_token');
+      window.sessionStorage.removeItem('finance_advisor_user');
+      window.dispatchEvent(new Event('finance-advisor:unauthorized'));
       
       const message = 'Not authenticated. Please log in again.';
       throw new ApiError(message, { status: response.status, details: payload });
@@ -143,7 +147,7 @@ function normalizeProfileResponse(data) {
     monthlySurplus: pick(data, 'monthly_surplus', undefined),
     savingsRate:
       typeof data?.monthly_surplus === 'number' && typeof data?.monthly_income === 'number' && data.monthly_income > 0
-        ? (data.monthly_surplus / data.monthly_income) * 100
+        ? data.monthly_surplus / data.monthly_income
         : pick(data, 'savings_rate', undefined),
     debtToIncomeRatio: pick(data, 'debt_to_income_ratio', undefined),
     raw: data,
@@ -173,11 +177,22 @@ function normalizePlan(plan) {
     riskLevel: pick(plan, 'risk_level', undefined),
     allocation: pick(plan, 'allocation', {}),
     blendedExpectedReturn: pick(plan, 'blended_expected_return', undefined),
+    monthlyInvestment: pick(plan, 'monthly_investment', undefined),
+    currentSavings: pick(plan, 'current_savings', undefined),
+    futureValueOfCurrentSavings: pick(plan, 'future_value_of_current_savings', undefined),
+    totalPlannedContributions: pick(plan, 'total_planned_contributions', undefined),
+    totalRequiredContributions: pick(plan, 'total_required_contributions', undefined),
+    isGoalAchievable: pick(plan, 'is_goal_achievable', undefined),
     projectedCorpus: pick(plan, 'projected_corpus', undefined),
     gapVsTarget: pick(plan, 'gap_vs_target', undefined),
     requiredMonthlyInvestment: pick(
       plan,
       'required_monthly_investment',
+      undefined,
+    ),
+    additionalMonthlyInvestmentNeeded: pick(
+      plan,
+      'additional_monthly_investment_needed',
       undefined,
     ),
     volatility: pick(plan, 'volatility', undefined),
@@ -307,10 +322,9 @@ export async function createGoal(goalInput) {
 
 /**
  * POST /api/v1/plans/generate
- * Maps: profileId → customer_id, goalId → goal_ids (array),
- * riskCategory → risk_assessment_id (optional)
+ * Maps profile/goal/risk IDs and the user's planned monthly investment.
  */
-export async function generatePlans({ profileId, goalId, riskCategory, riskAssessmentId }) {
+export async function generatePlans({ profileId, goalId, riskAssessmentId, monthlyInvestment }) {
   if (USE_MOCK_DATA) {
     await mockDelay(900);
     return normalizePlansResponse(MOCK_PLANS);
@@ -319,6 +333,7 @@ export async function generatePlans({ profileId, goalId, riskCategory, riskAsses
   const body = {
     customer_id: profileId,
     goal_ids: [goalId],
+    custom_parameters: { monthly_investment: monthlyInvestment },
   };
   if (riskAssessmentId) {
     body.risk_assessment_id = riskAssessmentId;
@@ -335,7 +350,7 @@ export async function generatePlans({ profileId, goalId, riskCategory, riskAsses
  * POST /api/v1/plans/compare
  * Maps: profileId → customer_id, sends plan_ids from stored plan objects
  */
-export async function comparePlans({ profileId, goalId, plans }) {
+export async function comparePlans({ profileId, plans }) {
   if (USE_MOCK_DATA) {
     await mockDelay(700);
     return normalizeComparisonResponse(MOCK_COMPARISON_SUMMARY);
@@ -358,7 +373,7 @@ export async function comparePlans({ profileId, goalId, plans }) {
  * POST /api/v1/plans/{planId}/select
  * Uses real plan ID instead of plan name
  */
-export async function selectPlan({ planId, profileId, planName }) {
+export async function selectPlan({ planId, planName }) {
   if (USE_MOCK_DATA) {
     await mockDelay(400);
     return { ...MOCK_SELECT_PLAN_RESPONSE, selected_plan_name: planName };
@@ -391,9 +406,9 @@ export async function sendChatMessage({ message, conversationId, context }) {
 
 /**
  * POST /api/v1/plans/whatif
- * Maps: profileId → customer_id, planName → plan_id, goalId → goal_id
+ * Maps profileId, planId, and goalId to backend identifiers.
  */
-export async function runWhatIf({ profileId, goalId, planName, planId, scenario }) {
+export async function runWhatIf({ profileId, goalId, planId, scenario }) {
   if (USE_MOCK_DATA) {
     await mockDelay(800);
     return normalizeWhatIfResponse(MOCK_WHATIF_RESULT);

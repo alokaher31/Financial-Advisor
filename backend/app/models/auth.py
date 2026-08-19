@@ -2,7 +2,7 @@
 Authentication schemas for user registration, login, and token management.
 """
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from datetime import datetime
 from typing import Optional
 
@@ -53,15 +53,13 @@ class TokenData(BaseModel):
 
 class UserOut(BaseModel):
     """Schema for user information response (never includes password)."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int = Field(..., description="User ID")
     name: str = Field(..., description="User's full name")
     email: EmailStr = Field(..., description="User's email address")
     created_at: datetime = Field(..., description="Account creation timestamp")
     
-    class Config:
-        from_attributes = True
-
-
 class UserUpdate(BaseModel):
     """Schema for updating user information."""
     name: Optional[str] = Field(None, min_length=1, max_length=200, description="User's full name")

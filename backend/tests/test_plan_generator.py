@@ -65,10 +65,17 @@ def test_every_plan_has_exactly_the_required_keys(
         "plan_name",
         "allocation",
         "blended_expected_return",
+        "monthly_investment",
+        "current_savings",
+        "future_value_of_current_savings",
+        "total_planned_contributions",
+        "total_required_contributions",
         "projected_corpus",
         "gap_vs_target",
         "required_monthly_investment",
+        "additional_monthly_investment_needed",
         "risk_level",
+        "is_goal_achievable",
     }
     plans = generate_plans(customer_profile, "Conservative", goal, historical_data)
     assert all(set(plan) == required_keys for plan in plans)
@@ -79,7 +86,7 @@ def test_allocations_and_risk_levels_match_the_contract(
     goal: dict[str, float],
     historical_data: pd.DataFrame,
 ) -> None:
-    plans = generate_plans(customer_profile, "Aggressive", goal, historical_data)
+    plans = generate_plans(customer_profile, "Moderate", goal, historical_data)
     assert plans[0]["allocation"] == {
         "Equity": 20,
         "Debt": 50,
@@ -109,6 +116,49 @@ def test_allocations_and_risk_levels_match_the_contract(
     ]
 
 
+def test_allocations_change_with_risk_category(
+    customer_profile: dict[str, float],
+    goal: dict[str, float],
+    historical_data: pd.DataFrame,
+) -> None:
+    conservative = generate_plans(
+        customer_profile, "Conservative", goal, historical_data
+    )
+    aggressive = generate_plans(
+        customer_profile, "Aggressive", goal, historical_data
+    )
+
+    assert [plan["allocation"]["Equity"] for plan in conservative] == [10, 40, 60]
+    assert [plan["allocation"]["Equity"] for plan in aggressive] == [30, 60, 80]
+    assert all(sum(plan["allocation"].values()) == 100 for plan in conservative)
+    assert all(sum(plan["allocation"].values()) == 100 for plan in aggressive)
+
+
+def test_allocations_change_with_horizon_age_and_goal_type(
+    customer_profile: dict[str, float],
+    goal: dict[str, float],
+    historical_data: pd.DataFrame,
+) -> None:
+    short_term = generate_plans(
+        {**customer_profile, "age": 60},
+        "Moderate",
+        {**goal, "time_horizon_years": 2, "goal_type": "emergency_fund"},
+        historical_data,
+    )
+    long_term = generate_plans(
+        {**customer_profile, "age": 25},
+        "Moderate",
+        {**goal, "time_horizon_years": 20, "goal_type": "retirement"},
+        historical_data,
+    )
+
+    assert [plan["allocation"]["Equity"] for plan in short_term] == [5, 30, 50]
+    assert [plan["allocation"]["Equity"] for plan in long_term] == [30, 60, 80]
+    assert [plan["allocation"] for plan in short_term] != [
+        plan["allocation"] for plan in long_term
+    ]
+
+
 def test_blended_returns_are_weighted_averages(
     customer_profile: dict[str, float],
     goal: dict[str, float],
@@ -126,6 +176,52 @@ def test_projection_uses_goal_balance_and_monthly_surplus(
     plan = generate_plans(customer_profile, "Moderate", goal, historical_data)[0]
     expected = calculate_future_value(200_000, 40_000, 8.325, 5)
     assert plan["projected_corpus"] == _round_half_up(expected)
+
+
+def test_projection_uses_explicit_monthly_investment_instead_of_surplus(
+    customer_profile: dict[str, float],
+    goal: dict[str, float],
+    historical_data: pd.DataFrame,
+) -> None:
+    profile = {**customer_profile, "monthly_investment": 10_000}
+    plan = generate_plans(profile, "Moderate", goal, historical_data)[0]
+    expected = calculate_future_value(200_000, 10_000, 8.325, 5)
+    assert plan["monthly_investment"] == 10_000
+    assert plan["projected_corpus"] == _round_half_up(expected)
+
+
+def test_small_target_long_horizon_explains_small_minimum_without_unit_error(
+    historical_data: pd.DataFrame,
+) -> None:
+    """Regression for the ₹74-style result shown in the plan detail screen."""
+
+    profile = {
+        "monthly_income": 50_000,
+        "monthly_expenses": 40_000,
+        "monthly_investment": 1_000,
+    }
+    goal = {
+        "target_amount": 100_000,
+        "current_amount": 10_000,
+        "time_horizon_years": 20,
+    }
+    plan = generate_plans(profile, "Conservative", goal, historical_data)[0]
+
+    assert 70 < plan["required_monthly_investment"] < 100
+    assert plan["monthly_investment"] == 1_000
+    assert plan["projected_corpus"] > goal["target_amount"]
+    assert plan["additional_monthly_investment_needed"] == 0
+    assert plan["is_goal_achievable"] is True
+
+
+def test_negative_explicit_monthly_investment_is_rejected(
+    customer_profile: dict[str, float],
+    goal: dict[str, float],
+    historical_data: pd.DataFrame,
+) -> None:
+    profile = {**customer_profile, "monthly_investment": -1}
+    with pytest.raises(ValueError, match="monthly_investment"):
+        generate_plans(profile, "Moderate", goal, historical_data)
 
 
 def test_each_plan_uses_its_own_return_for_required_investment(
@@ -181,7 +277,7 @@ def test_zero_income_uses_zero_monthly_contribution(
     historical_data: pd.DataFrame,
 ) -> None:
     profile = {"monthly_income": 0, "monthly_expenses": 0}
-    plans = generate_plans(profile, "Conservative", goal, historical_data)
+    plans = generate_plans(profile, "Moderate", goal, historical_data)
     expected = calculate_future_value(200_000, 0, 8.325, 5)
     assert plans[0]["projected_corpus"] == _round_half_up(expected)
 
@@ -191,7 +287,7 @@ def test_monthly_deficit_is_not_treated_as_a_withdrawal(
     historical_data: pd.DataFrame,
 ) -> None:
     profile = {"monthly_income": 20_000, "monthly_expenses": 30_000}
-    plans = generate_plans(profile, "Conservative", goal, historical_data)
+    plans = generate_plans(profile, "Moderate", goal, historical_data)
     expected = calculate_future_value(200_000, 0, 8.325, 5)
     assert plans[0]["projected_corpus"] == _round_half_up(expected)
 

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext.jsx'
+import { apiConfig } from '../api/apiClient.js'
 
 export default function AuthLanding() {
   const { login, signup, loginAsDemo, error: contextError, clearError, isLoading } =
@@ -269,18 +270,21 @@ export default function AuthLanding() {
                   {isLoading ? 'Authenticating...' : 'Sign In to Portal'}
                 </button>
 
-                <div className="auth-divider">
-                  <span>OR</span>
-                </div>
-
-                <button
-                  type="button"
-                  className="auth-btn-secondary"
-                  onClick={loginAsDemo}
-                  disabled={isLoading}
-                >
-                  Continue as Demo Client
-                </button>
+                {apiConfig.USE_MOCK_DATA && (
+                  <>
+                    <div className="auth-divider">
+                      <span>OR</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="auth-btn-secondary"
+                      onClick={loginAsDemo}
+                      disabled={isLoading}
+                    >
+                      Continue as Demo Client
+                    </button>
+                  </>
+                )}
               </form>
             ) : (
               <form className="auth-form" onSubmit={handleSignupSubmit} noValidate>

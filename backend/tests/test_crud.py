@@ -1,216 +1,96 @@
-from sqlalchemy import select
+"""CRUD tests against the current database models and schemas."""
 
-from app.db.crud import (
-    create_customer,
-    create_goal,
-    delete_customer,
-    delete_goal,
-    get_customer,
-    get_customer_by_name,
-    get_customer_goals,
-    get_customers,
-    get_goal,
-)
-from app.db.database import SessionLocal
-from app.db.db_models import Customer
+import pytest
+from pydantic import ValidationError
+
+from app.db import crud
+from app.models import CustomerProfileCreate, CustomerProfileUpdate, GoalCreate, GoalUpdate
 
 
-def test_get_all_customers():
-    """Verify that seeded customers can be retrieved."""
-
-    db = SessionLocal()
-
-    try:
-        customers = get_customers(db)
-
-        assert len(customers) == 8
-
-    finally:
-        db.close()
+def _profile(name: str = "CRUD Test Customer") -> CustomerProfileCreate:
+    return CustomerProfileCreate(
+        name=name,
+        age=32,
+        occupation="Engineer",
+        monthly_income=100_000,
+        monthly_expenses=50_000,
+        total_assets=500_000,
+        total_liabilities=100_000,
+    )
 
 
-def test_get_customer_by_id():
-    """Verify that a customer can be retrieved by ID."""
+def test_customer_profile_crud_and_recalculation(db_session):
+    created = crud.create_customer_profile(db_session, _profile())
+    assert created.id is not None
+    assert created.net_worth == 400_000
+    assert created.savings_rate == pytest.approx(0.5)
+    assert created.debt_to_income_ratio == pytest.approx(1 / 12)
 
-    db = SessionLocal()
+    updated = crud.update_customer_profile(
+        db_session,
+        created.id,
+        CustomerProfileUpdate(monthly_expenses=75_000),
+    )
+    assert updated.monthly_surplus == 25_000
+    assert updated.savings_rate == pytest.approx(0.25)
+    assert crud.delete_customer_profile(db_session, created.id) is True
+    assert crud.get_customer_profile(db_session, created.id) is None
 
-    try:
-        customer = get_customer(db, 1)
 
-        assert customer is not None
-        assert customer.id == 1
-
-    finally:
-        db.close()
-
-
-def test_get_customer_by_name():
-    """Verify that a customer can be retrieved by name."""
-
-    db = SessionLocal()
-
-    try:
-        customers = get_customers(db)
-
-        assert len(customers) > 0
-
-        expected_name = customers[0].customer_name
-
-        customer = get_customer_by_name(
-            db,
-            expected_name,
+def test_partial_profile_update_validates_merged_state(db_session):
+    created = crud.create_customer_profile(db_session, _profile())
+    with pytest.raises(ValidationError, match="expenses"):
+        crud.update_customer_profile(
+            db_session,
+            created.id,
+            CustomerProfileUpdate(monthly_income=20_000),
         )
 
-        assert customer is not None
-        assert customer.customer_name == expected_name
 
-    finally:
-        db.close()
+def test_goal_crud_uses_requested_return_assumption(db_session):
+    customer = crud.create_customer_profile(db_session, _profile())
+    goal = crud.create_goal(
+        db_session,
+        GoalCreate(
+            customer_id=customer.id,
+            goal_type="retirement",
+            goal_name="Retirement",
+            target_amount=1_000_000,
+            current_savings=100_000,
+            time_horizon_years=10,
+            priority="high",
+        ),
+        return_rate=0.10,
+    )
+    original_required = goal.required_monthly_saving
 
-
-def test_get_customer_goals():
-    """Verify that customer goals can be retrieved."""
-
-    db = SessionLocal()
-
-    try:
-        customers = get_customers(db)
-
-        customer = customers[0]
-
-        goals = get_customer_goals(
-            db,
-            customer.id,
-        )
-
-        assert len(goals) >= 1
-
-        for goal in goals:
-            assert goal.customer_id == customer.id
-
-    finally:
-        db.close()
+    updated = crud.update_goal(
+        db_session,
+        goal.id,
+        GoalUpdate(time_horizon_years=20),
+        return_rate=0.10,
+    )
+    assert updated.required_monthly_saving < original_required
+    assert crud.delete_goal(db_session, goal.id) is True
+    assert crud.get_goal(db_session, goal.id) is None
 
 
-def test_create_and_delete_customer():
-    """Verify customer creation and deletion."""
-
-    db = SessionLocal()
-
-    test_name = "CRUD Test Customer"
-
-    try:
-        # Remove leftover test customer if it exists
-        existing = get_customer_by_name(
-            db,
-            test_name,
-        )
-
-        if existing:
-            delete_customer(
-                db,
-                existing.id,
-            )
-
-        customer_data = {
-            "customer_name": test_name,
-            "age": 32,
-            "monthly_income": 100000.0,
-            "monthly_expenses": 50000.0,
-            "savings": 200000.0,
-            "total_assets": 500000.0,
-            "total_liabilities": 100000.0,
-            "likely_risk_category": "Moderate",
-        }
-
-        customer = create_customer(
-            db,
-            customer_data,
-        )
-
-        assert customer.id is not None
-        assert customer.customer_name == test_name
-
-        fetched = get_customer(
-            db,
-            customer.id,
-        )
-
-        assert fetched is not None
-        assert fetched.customer_name == test_name
-
-        deleted = delete_customer(
-            db,
-            customer.id,
-        )
-
-        assert deleted is True
-
-        assert get_customer(
-            db,
-            customer.id,
-        ) is None
-
-    finally:
-        # Safety cleanup
-        leftover = get_customer_by_name(
-            db,
-            test_name,
-        )
-
-        if leftover:
-            delete_customer(
-                db,
-                leftover.id,
-            )
-
-        db.close()
-
-
-def test_create_and_delete_goal():
-    """Verify goal creation and deletion."""
-
-    db = SessionLocal()
-
-    try:
-        customer = get_customers(db)[0]
-
-        goal_data = {
-            "goal_type": "CRUD Test Goal",
-            "target_amount": 1000000.0,
-            "current_goal_savings": 100000.0,
-            "time_horizon_years": 10,
-        }
-
-        goal = create_goal(
-            db,
-            customer.id,
-            goal_data,
-        )
-
-        assert goal.id is not None
-        assert goal.customer_id == customer.id
-        assert goal.goal_type == "CRUD Test Goal"
-
-        fetched = get_goal(
-            db,
+def test_partial_goal_update_validates_current_savings_against_target(db_session):
+    customer = crud.create_customer_profile(db_session, _profile())
+    goal = crud.create_goal(
+        db_session,
+        GoalCreate(
+            customer_id=customer.id,
+            goal_type="other",
+            goal_name="Goal",
+            target_amount=1_000_000,
+            current_savings=100_000,
+            time_horizon_years=5,
+        ),
+    )
+    with pytest.raises(ValidationError, match="cannot exceed"):
+        crud.update_goal(
+            db_session,
             goal.id,
+            GoalUpdate(target_amount=50_000),
         )
-
-        assert fetched is not None
-        assert fetched.goal_type == "CRUD Test Goal"
-
-        deleted = delete_goal(
-            db,
-            goal.id,
-        )
-
-        assert deleted is True
-
-        assert get_goal(
-            db,
-            goal.id,
-        ) is None
-
-    finally:
-        db.close()

@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext.jsx'
 import { createGoal, generatePlans } from '../api/apiClient.js'
 import FormField from '../components/ui/FormField.jsx'
 import ErrorState from '../components/ErrorState.jsx'
-import { formatCurrency } from '../utils/format.js'
+import { formatCurrency, formatIndianAmount } from '../utils/format.js'
 import { validateRequiredNumber, hasErrors } from '../utils/validation.js'
 
 const GOAL_TYPES = ['Retirement', 'Home Purchase', 'Education', 'Emergency Fund', 'Wealth Creation', 'Other']
@@ -14,6 +14,7 @@ function initialFormState(saved) {
     goal_type: saved?.goal_type ?? GOAL_TYPES[0],
     target_amount: saved?.target_amount ?? '',
     current_amount: saved?.current_amount ?? '',
+    monthly_investment: saved?.monthly_investment ?? '',
     time_horizon_years: saved?.time_horizon_years ?? '',
     priority: saved?.priority ?? PRIORITIES[1],
   }
@@ -33,18 +34,24 @@ export default function GoalInput() {
   }
 
   function validate() {
+    const target = Number(form.target_amount)
+    const current = Number(form.current_amount)
     const nextErrors = {
       target_amount: validateRequiredNumber(form.target_amount, { min: 1, label: 'Target amount' }),
       current_amount: validateRequiredNumber(form.current_amount, { min: 0, label: 'Current savings toward goal' }),
-      time_horizon_years: validateRequiredNumber(form.time_horizon_years, { min: 1, max: 60, label: 'Time horizon' }),
+      monthly_investment: validateRequiredNumber(form.monthly_investment, { min: 0, label: 'Planned monthly investment' }),
+      time_horizon_years: validateRequiredNumber(form.time_horizon_years, { min: 1, max: 50, label: 'Time horizon' }),
+    }
+    if (!nextErrors.target_amount && !nextErrors.current_amount && current > target) {
+      nextErrors.current_amount = 'Current savings cannot exceed the target amount.'
     }
     setErrors(nextErrors)
     return !hasErrors(nextErrors)
   }
 
   const summaryReady = useMemo(() => {
-    return form.target_amount !== '' && form.current_amount !== '' && form.time_horizon_years !== ''
-  }, [form.target_amount, form.current_amount, form.time_horizon_years])
+    return form.target_amount !== '' && form.current_amount !== '' && form.monthly_investment !== '' && form.time_horizon_years !== ''
+  }, [form.target_amount, form.current_amount, form.monthly_investment, form.time_horizon_years])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -56,6 +63,7 @@ export default function GoalInput() {
       goal_type: form.goal_type,
       target_amount: Number(form.target_amount),
       current_amount: Number(form.current_amount),
+      monthly_investment: Number(form.monthly_investment),
       time_horizon_years: Number(form.time_horizon_years),
       priority: form.priority,
     }
@@ -71,6 +79,7 @@ export default function GoalInput() {
         goalId: goalResult.goalId,
         riskCategory: state.risk.result?.riskCategory,
         riskAssessmentId: state.risk.result?.riskAssessmentId,
+        monthlyInvestment: payload.monthly_investment,
       })
       dispatch({ type: 'SET_PLANS', plans })
       dispatch({ type: 'COMPLETE_STEP', step: 'goal' })
@@ -121,7 +130,14 @@ export default function GoalInput() {
                 ))}
               </select>
             </FormField>
-            <FormField id="target_amount" label="Target Amount" required error={errors.target_amount} prefix="₹">
+            <FormField
+              id="target_amount"
+              label="Target Amount"
+              required
+              error={errors.target_amount}
+              hint={form.target_amount !== '' ? `You entered ${formatIndianAmount(form.target_amount)}.` : 'Enter the full rupee amount, e.g. 1,00,00,000 for ₹1 crore.'}
+              prefix="₹"
+            >
               <input
                 id="target_amount"
                 className={`input ${errors.target_amount ? 'input--error' : ''}`}
@@ -136,6 +152,7 @@ export default function GoalInput() {
               label="Current Savings Toward Goal"
               required
               error={errors.current_amount}
+              hint={form.current_amount !== '' ? `You entered ${formatIndianAmount(form.current_amount)}.` : 'Only savings already assigned to this goal.'}
               prefix="₹"
             >
               <input
@@ -145,6 +162,23 @@ export default function GoalInput() {
                 min="0"
                 value={form.current_amount}
                 onChange={(e) => updateField('current_amount', e.target.value)}
+              />
+            </FormField>
+            <FormField
+              id="monthly_investment"
+              label="Planned Monthly Investment"
+              required
+              error={errors.monthly_investment}
+              hint={form.monthly_investment !== '' ? `${formatIndianAmount(form.monthly_investment)} every month.` : 'The amount you actually intend to invest each month.'}
+              prefix="₹"
+            >
+              <input
+                id="monthly_investment"
+                className={`input ${errors.monthly_investment ? 'input--error' : ''}`}
+                type="number"
+                min="0"
+                value={form.monthly_investment}
+                onChange={(e) => updateField('monthly_investment', e.target.value)}
               />
             </FormField>
             <FormField
@@ -158,7 +192,7 @@ export default function GoalInput() {
                 className={`input ${errors.time_horizon_years ? 'input--error' : ''}`}
                 type="number"
                 min="1"
-                max="60"
+                max="50"
                 value={form.time_horizon_years}
                 onChange={(e) => updateField('time_horizon_years', e.target.value)}
               />
@@ -174,7 +208,8 @@ export default function GoalInput() {
               <strong>{formatCurrency(Number(form.target_amount))}</strong> in{' '}
               <strong>{form.time_horizon_years} year(s)</strong>, starting from{' '}
               <strong>{formatCurrency(Number(form.current_amount))}</strong> already saved. Priority:{' '}
-              <strong>{form.priority}</strong>.
+              <strong>{form.priority}</strong>. Planned contribution:{' '}
+              <strong>{formatCurrency(Number(form.monthly_investment))} per month</strong>.
             </p>
           </div>
         )}

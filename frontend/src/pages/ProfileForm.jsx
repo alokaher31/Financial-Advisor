@@ -29,7 +29,6 @@ function initialFormState(saved) {
     age: saved?.age ?? '',
     monthly_income: saved?.monthly_income ?? '',
     monthly_expenses: saved?.monthly_expenses ?? '',
-    savings: saved?.savings ?? '',
     assets: {
       equity: saved?.assets?.equity ?? '',
       debt: saved?.assets?.debt ?? '',
@@ -63,10 +62,9 @@ export default function ProfileForm() {
     const nextErrors = {
       name: form.name.trim() ? null : 'Name is required',
       occupation: form.occupation.trim() ? null : 'Occupation is required',
-      age: validateRequiredNumber(form.age, { min: 1, max: 120, label: 'Age' }),
+      age: validateRequiredNumber(form.age, { min: 18, max: 100, label: 'Age' }),
       monthly_income: validateRequiredNumber(form.monthly_income, { min: 0, label: 'Monthly income' }),
       monthly_expenses: validateRequiredNumber(form.monthly_expenses, { min: 0, label: 'Monthly expenses' }),
-      savings: validateRequiredNumber(form.savings, { min: 0, label: 'Savings' }),
     }
     for (const { key, label } of ASSET_FIELDS) {
       nextErrors[`assets.${key}`] = validateOptionalNonNegativeNumber(form.assets[key], { label })
@@ -89,7 +87,6 @@ export default function ProfileForm() {
       age: toNum(form.age),
       monthly_income: toNum(form.monthly_income),
       monthly_expenses: toNum(form.monthly_expenses),
-      savings: toNum(form.savings),
       assets: Object.fromEntries(ASSET_FIELDS.map(({ key }) => [key, toNum(form.assets[key])])),
       liabilities: Object.fromEntries(LIABILITY_FIELDS.map(({ key }) => [key, toNum(form.liabilities[key])])),
     }
@@ -139,8 +136,8 @@ export default function ProfileForm() {
                 id="age"
                 className={`input ${errors.age ? 'input--error' : ''}`}
                 type="number"
-                min="1"
-                max="120"
+                min="18"
+                max="100"
                 value={form.age}
                 onChange={(e) => updateField('age', e.target.value)}
               />
@@ -163,16 +160,6 @@ export default function ProfileForm() {
                 min="0"
                 value={form.monthly_expenses}
                 onChange={(e) => updateField('monthly_expenses', e.target.value)}
-              />
-            </FormField>
-            <FormField id="savings" label="Current Savings" required error={errors.savings} prefix="₹">
-              <input
-                id="savings"
-                className={`input ${errors.savings ? 'input--error' : ''}`}
-                type="number"
-                min="0"
-                value={form.savings}
-                onChange={(e) => updateField('savings', e.target.value)}
               />
             </FormField>
           </div>

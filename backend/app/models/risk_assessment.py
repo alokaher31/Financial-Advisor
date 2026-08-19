@@ -4,7 +4,7 @@ Risk Assessment Pydantic models for request/response validation.
 
 from datetime import datetime
 from typing import Dict, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RiskAnswers(BaseModel):
@@ -19,9 +19,10 @@ class RiskAnswers(BaseModel):
     def validate_answers(cls, v):
         """Ensure all required question IDs are present."""
         required_questions = {
-            "age", "investment_experience", "time_horizon", "market_reaction",
-            "risk_comfort", "goal_priority", "income_stability", "emergency_fund",
-            "debt_level", "investment_knowledge"
+            "investment_experience", "market_drop_reaction", "income_stability",
+            "investment_time_horizon", "primary_goal", "volatility_comfort",
+            "investment_knowledge", "emergency_fund_coverage",
+            "debt_payment_pressure", "loss_capacity",
         }
         provided_questions = set(v.keys())
         
@@ -48,14 +49,12 @@ class RiskAssessmentBase(BaseModel):
 
 class RiskAssessment(RiskAssessmentBase):
     """Model for risk assessment response with database fields."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     created_at: datetime
     updated_at: datetime
     
-    class Config:
-        from_attributes = True
-
-
 class RiskProfile(BaseModel):
     """Comprehensive risk profile with recommendations."""
     risk_score: int = Field(..., ge=0, le=100)

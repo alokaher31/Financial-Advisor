@@ -38,7 +38,7 @@ def test_calculate_monthly_surplus(
 
 
 def test_calculate_debt_to_income_ratio_returns_decimal_ratio() -> None:
-    assert calculate_debt_to_income_ratio(150_000, 50_000) == pytest.approx(3.0)
+    assert calculate_debt_to_income_ratio(150_000, 50_000) == pytest.approx(0.25)
 
 
 def test_calculate_debt_to_income_ratio_handles_two_zero_values() -> None:

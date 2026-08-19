@@ -139,8 +139,10 @@ def _format_plan(plan) -> Dict[str, Any]:
         "current_monthly_investment": plan.monthly_savings_target,
         "projected_corpus": assumptions.get("projected_corpus", 0),
         "gap_vs_target": assumptions.get("gap_vs_target", 0),
-        "required_monthly_investment": plan.monthly_savings_target,
-        "is_selected": plan.status == "selected",
+        "required_monthly_investment": assumptions.get(
+            "required_monthly_investment", plan.monthly_savings_target
+        ),
+        "is_selected": plan.status == "active",
         "created_at": plan.created_at.isoformat() if plan.created_at else None
     }
 
@@ -174,8 +176,8 @@ def get_recent_chat_history(
     for msg in messages:
         formatted_messages.append({
             "role": msg.role,
-            "content": msg.message,
-            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
+            "content": msg.content,
+            "timestamp": msg.created_at.isoformat() if msg.created_at else None
         })
     
     return formatted_messages

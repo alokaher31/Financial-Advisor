@@ -58,6 +58,10 @@ export default function PlanComparison() {
       <div className="page-header">
         <h1>Compare Your Plans</h1>
         <p>Three plans generated from your profile, risk assessment, and goal. All figures come from the planning engine.</p>
+        <p className="text-faint mt-1">
+          Allocations respond to your risk assessment, age, goal type, and time horizon.
+          Contribution and target amounts change projections, but do not change the strategic asset mix.
+        </p>
       </div>
 
       <DisclaimerBanner />
